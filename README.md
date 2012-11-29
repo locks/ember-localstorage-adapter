@@ -18,7 +18,6 @@ App.store = DS.Store.create({
 
 ```
 
-
 ### Local Storage Namespace
 
 All of your application data lives on a single `localStorage` key, it defaults to `DS.LSAdapter` but if you supply a `namespace` option it will store it there:
@@ -26,6 +25,19 @@ All of your application data lives on a single `localStorage` key, it defaults t
 ```js
 DS.LSAdapter.create({
   namespace: 'my app'
+});
+```
+
+### Model "url"
+
+If your model definition has a `url` property, the adapter will store the data on that namespace. URL is a weird term in this context, but it makes swapping out adapters simpler by not requiring additional properties on your models.
+
+```js
+var List = DS.Model.extend({
+  // ...
+});
+List.reopenClass({
+  url: '/some/url'
 });
 ```
 

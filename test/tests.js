@@ -8,7 +8,7 @@ var list, lists;
 
 var FIXTURES = {
   'App.List': {
-    ids: [1,2,3],
+    last_id: 3,
     records: {
       1: { id: 1, name: 'one', b: true, lol: '' },
       2: { id: 2, name: 'two', b: false, lol: ''},

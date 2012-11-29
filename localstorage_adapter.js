@@ -105,7 +105,6 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
       records.forEach(function(record) {
         var id = record.get('id');
         delete namespace.records[id];
-        Ember.EnumerableUtils.removeObject(namespace.ids, id);
       });
       this._didSaveRecords(store, type, records);
     });
@@ -150,14 +149,15 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 
   _namespaceForType: function(type) {
     var namespace = type.url || type.toString();
-    return this._data[namespace] || (this._data[namespace] = { ids: [], records: {}});
+    return this._data[namespace] || (
+      this._data[namespace] = { last_id: 0, records: {}}
+    );
   },
 
   _addRecordToNamespace: function(namespace, record) {
-    var id = namespace.ids.length + 1;
+    var id = namespace.last_id = namespace.last_id + 1;
     record.set('id', id);
     namespace.records[id] = record.toData();
-    namespace.ids.push(id);
   },
 
   _async: function(callback) {

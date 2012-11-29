@@ -1,10 +1,40 @@
+module('DS.LSAdapter', {
+
+  setup: function() {
+    localStorage.setItem('DS.LSAdapter', JSON.stringify(FIXTURES));
+
+    List = DS.Model.extend({
+      name: DS.attr('string'),
+      b: DS.attr('boolean'),
+      lol: DS.attr('string')
+    });
+
+    List.toString = function() {
+      return 'App.List';
+    };
+
+    adapter = DS.LSAdapter.create();
+
+    store = DS.Store.create({adapter: adapter});
+
+    clock = sinon.useFakeTimers();
+  },
+
+  teardown: function() {
+    clock.restore();
+    localStorage.removeItem('DS.LSAdapter');
+    adapter.destroy();
+    store.destroy();
+    list = null;
+    lists = null;
+  }
+
+});
+
 Ember.ENV.TESTING = true;
 
-// global setup variables
-var List, store, adapter, clock;
-
-// global test variables
-var list, lists;
+// global variables
+var List, store, adapter, clock, list, lists;
 
 var FIXTURES = {
   'App.List': {
@@ -88,39 +118,6 @@ function occupyLocalStorage() {
 
   while (saveUntilFull()) { continue; }
 }
-
-module('DS.LSAdapter', {
-
-  setup: function() {
-    localStorage.setItem('DS.LSAdapter', JSON.stringify(FIXTURES));
-
-    List = DS.Model.extend({
-      name: DS.attr('string'),
-      b: DS.attr('boolean'),
-      lol: DS.attr('string')
-    });
-
-    List.toString = function() {
-      return 'App.List';
-    };
-
-    adapter = DS.LSAdapter.create();
-
-    store = DS.Store.create({adapter: adapter});
-
-    clock = sinon.useFakeTimers();
-  },
-
-  teardown: function() {
-    clock.restore();
-    localStorage.removeItem('DS.LSAdapter');
-    adapter.destroy();
-    store.destroy();
-    list = null;
-    lists = null;
-  }
-
-});
 
 test('existence', function() {
   ok(DS.LSAdapter, 'LSAdapter added to DS namespace');

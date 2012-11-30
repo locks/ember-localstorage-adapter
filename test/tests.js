@@ -1,3 +1,6 @@
+// global variables
+var List, store, adapter, clock, list, lists, Item;
+
 module('DS.LSAdapter', {
 
   setup: function() {
@@ -5,18 +8,31 @@ module('DS.LSAdapter', {
 
     List = DS.Model.extend({
       name: DS.attr('string'),
-      b: DS.attr('boolean'),
-      lol: DS.attr('string')
+      b: DS.attr('boolean')
     });
 
     List.toString = function() {
       return 'App.List';
     };
 
+    Item = DS.Model.extend({
+      name: DS.attr('string')
+    });
+
+    Item.toString = function() {
+      return 'App.Item';
+    };
+
+    List.reopen({
+      items: DS.hasMany(Item)
+    });
+
+    Item.reopen({
+      list: DS.belongsTo(List)
+    });
+
     adapter = DS.LSAdapter.create();
-
     store = DS.Store.create({adapter: adapter});
-
     clock = sinon.useFakeTimers();
   },
 
@@ -33,16 +49,21 @@ module('DS.LSAdapter', {
 
 Ember.ENV.TESTING = true;
 
-// global variables
-var List, store, adapter, clock, list, lists;
-
 var FIXTURES = {
   'App.List': {
     last_id: 3,
     records: {
-      1: { id: 1, name: 'one', b: true, lol: '' },
-      2: { id: 2, name: 'two', b: false, lol: ''},
-      3: { id: 3, name: 'three', b: false, lol: '' }
+      1: { id: 1, name: 'one', b: true, items: [1,2] },
+      2: { id: 2, name: 'two', b: false },
+      3: { id: 3, name: 'three', b: false }
+    }
+  },
+
+  'App.Item': {
+    last_id: 2,
+    records: {
+      1: { id: 1, name: 'one', list_id: 1 },
+      2: { id: 2, name: 'two', list_id: 1 }
     }
   }
 };
@@ -70,10 +91,21 @@ function createAndSaveNewList(name) {
   equal(storedLists[list.get('id')].name, list.get('name'), 'list saved');
 }
 
-function getStoredLists() {
+function getLocalStorage() {
   var json = localStorage.getItem('DS.LSAdapter');
-  var obj = JSON.parse(json);
-  return obj['App.List'].records;
+  return JSON.parse(json);
+}
+
+function getStoredRecords(ns) {
+  return getLocalStorage()['App.' + ns].records;
+}
+
+function getStoredLists() {
+  return getStoredRecords('List');
+}
+
+function getStoredItems() {
+  return getStoredRecords('Item');
 }
 
 function expectState(state, value, l) {
@@ -210,6 +242,24 @@ test('bulkCommits changes', function() {
   equal(newList.get('name'), 'bulk new', 'created new list');
 });
 
+function getStoredItem(id) {
+  return getStoredItems()[id];
+}
+
+function assertItemMatchesStorage(item) {
+  var id = item.get('id');
+  var storedItem = getStoredItem(id);
+  equal(item.get('name'), storedItem.name);
+}
+
+test('hasMany association', function() {
+  list = List.find(1);
+  clock.tick(1);
+  items = list.get('items');
+  clock.tick(1);
+  items.forEach(assertItemMatchesStorage);
+});
+
 test('QUOTA_EXCEEDED_ERR when storage is full', function() {
   occupyLocalStorage();
   var handler = sinon.spy();
@@ -241,5 +291,4 @@ test('QUOTA_EXCEEDED_ERR when storage is full', function() {
    //lists = getStoredLists();
    //ok(lists[4], 'list saved after first error');
 });
-
 

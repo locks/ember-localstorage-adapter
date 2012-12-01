@@ -1,17 +1,29 @@
-DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
+DS.LSSerializer = DS.Serializer.extend({
 
-  bulkCommit: true,
+  addBelongsTo: function(data, record, key, association) {
+    data[key] = parseInt(record.get(key + '.id'), 10);
+  },
+
+  addHasMany: function(data, record, key, association) {
+    data[key] = record.get(key).map(function(record) {
+      return parseInt(record.get('id'), 10);
+    });
+  }
+
+});
+
+DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 
   init: function() {
     this._loadData();
-    // get all sorts of no method errors if not explicitly set
-    this.set('serializer', DS.Serializer.create());
   },
+
+  serializer: DS.LSSerializer.create(),
 
   find: function(store, type, id) {
     var namespace = this._namespaceForType(type);
     this._async(function(){
-      store.load(type, id, namespace.records[id]);
+      store.load(type, id, Ember.copy(namespace.records[id]));
     });
   },
 
@@ -20,7 +32,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
     this._async(function(){
       var results = [];
       for (var i = 0; i < ids.length; i++) {
-        results.push(namespace.records[ids[i]]);
+        results.push(Ember.copy(namespace.records[ids[i]]));
       }
       store.loadMany(type, results);
     });
@@ -71,7 +83,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
     this._async(function() {
       var results = [];
       for (var id in namespace.records) {
-        results.push(namespace.records[id]);
+        results.push(Ember.copy(namespace.records[id]));
       }
       store.loadMany(type, results);
     });
@@ -109,6 +121,14 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
       this._didSaveRecords(store, type, records);
     });
 
+  },
+
+  dirtyRecordsForHasManyChange: function(dirtySet, parent, relationship) {
+    dirtySet.add(parent);
+  },
+
+  dirtyRecordsForBelongsToChange: function(dirtySet, child, relationship) {
+    dirtySet.add(child);
   },
 
   // private

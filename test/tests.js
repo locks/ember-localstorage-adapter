@@ -1,5 +1,7 @@
 // global variables
-var List, store, adapter, clock, list, lists, Item;
+var List, list, lists,
+    Item, item, items,
+    store, adapter, clock;
 
 module('DS.LSAdapter', {
 
@@ -32,124 +34,25 @@ module('DS.LSAdapter', {
     });
 
     adapter = DS.LSAdapter.create();
+
     store = DS.Store.create({adapter: adapter});
+
     clock = sinon.useFakeTimers();
   },
 
   teardown: function() {
     clock.restore();
+
     localStorage.removeItem('DS.LSAdapter');
+
     adapter.destroy();
     store.destroy();
+
     list = null;
     lists = null;
   }
 
 });
-
-Ember.ENV.TESTING = true;
-
-var FIXTURES = {
-  'App.List': {
-    last_id: 3,
-    records: {
-      1: { id: 1, name: 'one', b: true, items: [1,2] },
-      2: { id: 2, name: 'two', b: false },
-      3: { id: 3, name: 'three', b: false }
-    }
-  },
-
-  'App.Item': {
-    last_id: 2,
-    records: {
-      1: { id: 1, name: 'one', list_id: 1 },
-      2: { id: 2, name: 'two', list_id: 1 }
-    }
-  }
-};
-
-// helpers
-function assertName(l, id) {
-  l = l || list;
-  id = id || 1;
-  equal(l.get('name'), FIXTURES['App.List'].records[id].name);
-}
-
-function commit() {
-  store.commit();
-  clock.tick(1);
-}
-
-function createNewList(name) {
-  return List.createRecord({ name: name || 'new' });
-}
-
-function createAndSaveNewList(name) {
-  list = createNewList(name);
-  commit();
-  storedLists = getStoredLists();
-  equal(storedLists[list.get('id')].name, list.get('name'), 'list saved');
-}
-
-function getLocalStorage() {
-  var json = localStorage.getItem('DS.LSAdapter');
-  return JSON.parse(json);
-}
-
-function getStoredRecords(ns) {
-  return getLocalStorage()['App.' + ns].records;
-}
-
-function getStoredLists() {
-  return getStoredRecords('List');
-}
-
-function getStoredItems() {
-  return getStoredRecords('Item');
-}
-
-function expectState(state, value, l) {
-  l = l || list;
-
-  if (value === undefined) { value = true; }
-
-  var flag = "is" + state.charAt(0).toUpperCase() + state.substr(1);
-  equal(l.get(flag), value, "the list is " + (value === false ? "not " : "") + state);
-}
-
-function repeat(str, n) {
-  var a = [];
-  while (n--) a.push(str);
-  return a.join('');
-}
-
-var n10b  = '0123456789';
-var n100b = repeat(n10b, 10);
-var n1k   = repeat(n100b, 10);
-var n10k  = repeat(n1k, 10);
-var n100k = repeat(n10k, 10);
-
-// WE ARE THE 99%!!
-function occupyLocalStorage() {
-
-  var item = n100k;
-
-  var saveUntilFull = function() {
-    item = item + n100k;
-
-    try {
-      localStorage.setItem('junk', item);
-    } catch(error) {
-      if (error.name === 'QUOTA_EXCEEDED_ERR') {
-        return false;
-      }
-    }
-
-    return true;
-  };
-
-  while (saveUntilFull()) { continue; }
-}
 
 test('existence', function() {
   ok(DS.LSAdapter, 'LSAdapter added to DS namespace');
@@ -158,45 +61,34 @@ test('existence', function() {
 test('find', function() {
   list = List.find(1);
   clock.tick(1);
-  assertName();
+  assertStoredList();
 });
 
 test('findMany', function() {
   lists = store.findMany(List, [1,3]);
   clock.tick(1);
-  assertName(lists.objectAt(0), 1);
-  assertName(lists.objectAt(1), 3);
+  assertStoredLists();
 });
 
 test('findQuery', function() {
-  var assertFirstObjectFound = function() {
-    clock.tick(1);
-    equal(lists.get('length'), 1);
-    assertName(lists.objectAt(0), 1);
-  };
-
   lists = store.findQuery(List, {name: /one|two/});
-  clock.tick(1);
-  equal(lists.get('length'), 2);
-  assertName(lists.objectAt(0), 1);
-  assertName(lists.objectAt(1), 2);
+  assertQuery(2);
 
   lists = store.findQuery(List, {name: /.+/, id: /1/});
-  assertFirstObjectFound();
+  assertQuery();
 
   lists = store.findQuery(List, {name: 'one'});
-  assertFirstObjectFound();
+  assertQuery();
 
   lists = store.findQuery(List, {b: true});
-  assertFirstObjectFound();
+  assertQuery();
 });
 
 test('findAll', function() {
   lists = store.findAll(List);
   clock.tick(1);
-  assertName(lists.objectAt(0), 1);
-  assertName(lists.objectAt(1), 2);
-  assertName(lists.objectAt(2), 3);
+  assertListsLength(3);
+  assertStoredLists();
 });
 
 test('createRecords', function() {
@@ -218,49 +110,72 @@ test('updateRecords', function() {
 
 test('deleteRecords', function() {
   createAndSaveNewList();
+
   list.deleteRecord();
-  equal(list.get('isDeleted'), true);
+  assertState('deleted');
+
   commit();
-  equal(list.get('isDeleted'), true);
-  var storedLists = getStoredLists();
-  equal(storedLists[list.get('id')], undefined);
+
+  assertState('deleted');
+  assertListNotFoundInStorage();
+
+  lists = store.findAll(List);
+  clock.tick(1);
+
+  assertListsLength(3);
 });
 
 test('bulkCommits changes', function() {
   var listToUpdate = List.find(1);
   var listToDelete = List.find(2);
-  createNewList('bulk new');
+  List.createRecord({name: 'bulk new'}); // will find later
+
   clock.tick(1);
 
   listToUpdate.set('name', 'updated');
   listToDelete.deleteRecord();
+
   commit();
 
   var updatedList = List.find(1);
   var newList = List.find(4);
   clock.tick(1);
 
-  ok(listToDelete.get('isDeleted'), 'list deleted');
-  equal(updatedList.get('name'), 'updated', 'list updated');
-  equal(newList.get('name'), 'bulk new', 'created new list');
+  assertState('deleted', true, listToDelete);
+  assertListNotFoundInStorage(listToDelete);
+  assertStoredList(updatedList);
+  assertStoredList(newList);
 });
 
-function getStoredItem(id) {
-  return getStoredItems()[id];
-}
-
-function assertItemMatchesStorage(item) {
-  var id = item.get('id');
-  var storedItem = getStoredItem(id);
-  equal(item.get('name'), storedItem.name);
-}
-
-test('hasMany association', function() {
+test('load hasMany association', function() {
   list = List.find(1);
   clock.tick(1);
+
+  assertStoredList();
+
   items = list.get('items');
   clock.tick(1);
-  items.forEach(assertItemMatchesStorage);
+
+  assertStoredItems();
+});
+
+test('load belongsTo association', function() {
+  item = Item.find(1);
+  clock.tick(1);
+  list = item.get('list');
+  clock.tick(1);
+
+  assertStoredList();
+});
+
+test('saves belongsTo and hasMany associations', function() {
+  list = List.find(1);
+  clock.tick(1);
+  item = Item.createRecord({name: '3', list: list});
+  commit();
+
+  assertItemBelongsToList(item, list);
+  assertListHasItem(list, item);
 });
 
 test('QUOTA_EXCEEDED_ERR when storage is full', function() {
@@ -270,14 +185,14 @@ test('QUOTA_EXCEEDED_ERR when storage is full', function() {
 
   list = List.createRecord({name: n100k});
 
-  expectState('new');
+  assertState('new');
   store.commit();
-  expectState('saving');
+  assertState('saving');
 
   clock.tick(1);
 
-  expectState('saving', false);
-  expectState('error');
+  assertState('saving', false);
+  assertState('error');
   equal(handler.getCall(0).args[0].list[0], list,
         'error handler called with record not saved');
 
@@ -289,8 +204,8 @@ test('QUOTA_EXCEEDED_ERR when storage is full', function() {
    
    //commit();
    
-   //expectState('saving', false);
-   //expectState('error', false);
+   //assertState('saving', false);
+   //assertState('error', false);
    //lists = getStoredLists();
    //ok(lists[4], 'list saved after first error');
 });

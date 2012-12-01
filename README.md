@@ -56,9 +56,9 @@ App.store.commit();
 Todo
 ----
 
-- Relationships, embedded, or otherwise (waiting for ember-data to be updated with stuff that will help here).
 - Figure out how to save a record once its transitioned to the error state.
 - Make the repo nicer to work with long-term (do something more intelligent with dependencies found in `vendor`, etc.)
+- Add some examples
 
 Tests
 -----

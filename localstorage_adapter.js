@@ -93,7 +93,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
     this._async(function() {
       records.forEach(function(record) {
         var id = record.get('id');
-        namespace.records[id] = record.toData();
+        namespace.records[id] = record.toData({includeId:true});
       }, this);
       this._didSaveRecords(store, type, records);
     });
@@ -157,7 +157,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
   _addRecordToNamespace: function(namespace, record) {
     var id = namespace.last_id = namespace.last_id + 1;
     record.set('id', id);
-    namespace.records[id] = record.toData();
+    namespace.records[id] = record.toData({includeId:true});
   },
 
   _async: function(callback) {

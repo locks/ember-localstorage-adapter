@@ -22,7 +22,8 @@ var FIXTURES = {
 function assertStoredList(l) {
   l = l || list;
   var storedList = getStoredList(l.get('id'));
-  deepEqual(storedList, l.toData({includeId: true}), 'list data matches stored list');
+  deepEqual(storedList, l.toData({includeId: true}),
+            'list data matches stored list');
 }
 
 function assertStoredLists(ls) {
@@ -32,7 +33,8 @@ function assertStoredLists(ls) {
 function assertStoredItem(i) {
   i = i || item;
   var storedItem = getStoredItem(i.get('id'));
-  deepEqual(storedItem, i.toData({includeId: true}), 'item data matches stored list');
+  deepEqual(storedItem, i.toData({includeId: true}),
+            'item data matches stored list');
 }
 
 function assertStoredItems(is) {
@@ -73,7 +75,8 @@ function assertState(state, value, l) {
   l = l || list;
   if (value === undefined) { value = true; }
   var flag = "is" + state.charAt(0).toUpperCase() + state.substr(1);
-  equal(l.get(flag), value, "the list is " + (value === false ? "not " : "") + state);
+  equal(l.get(flag), value,
+        "the list is " + (value === false ? "not " : "") + state);
 }
 
 function assertListNotFoundInStorage(l) {

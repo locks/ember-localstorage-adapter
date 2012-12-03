@@ -52,12 +52,6 @@ function assertQuery(expectedLength) {
   assertStoredLists();
 }
 
-function assertItemMatchesStorage(item) {
-  var id = item.get('id');
-  var storedItem = getStoredItem(id);
-  equal(item.get('name'), storedItem.name);
-}
-
 function assertItemBelongsToList(item, list) {
   var storedItem = getStoredItem(item.get('id'));
   equal(item.get('list'), list, 'items list is the list');

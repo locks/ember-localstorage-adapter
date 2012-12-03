@@ -36,7 +36,7 @@ If your model definition has a `url` property, the adapter will store the data o
 var List = DS.Model.extend({
   // ...
 });
-List.reopenClass({
+List.reopen({
   url: '/some/url'
 });
 ```

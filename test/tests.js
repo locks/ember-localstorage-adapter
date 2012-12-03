@@ -93,19 +93,13 @@ test('findAll', function() {
 
 test('createRecords', function() {
   createAndSaveNewList();
-  equal(list.get('id'), 4, 'id is incremented for new records');
-  storedList = getStoredLists()[list.get('id')]
-  equal(storedList.id, 4, 'id is stored with record');
 });
 
 test('updateRecords', function() {
   createAndSaveNewList();
   list.set('name', 'updated');
   commit();
-  var storedList = getStoredLists()[list.get('id')];
-  equal(list.get('name'), 'updated');
-  equal(storedList.name, list.get('name'));
-  equal(storedList.id, list.get('id'));
+  assertStoredList();
 });
 
 test('deleteRecords', function() {

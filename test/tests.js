@@ -59,13 +59,13 @@ test('existence', function() {
 });
 
 test('find', function() {
-  list = List.find(1);
+  list = List.find('l1');
   clock.tick(1);
   assertStoredList();
 });
 
 test('findMany', function() {
-  lists = store.findMany(List, [1,3]);
+  lists = store.findMany(List, ['l1', 'l3']);
   clock.tick(1);
   assertStoredLists();
 });
@@ -74,7 +74,7 @@ test('findQuery', function() {
   lists = store.findQuery(List, {name: /one|two/});
   assertQuery(2);
 
-  lists = store.findQuery(List, {name: /.+/, id: /1/});
+  lists = store.findQuery(List, {name: /.+/, id: /l1/});
   assertQuery();
 
   lists = store.findQuery(List, {name: 'one'});
@@ -120,8 +120,8 @@ test('deleteRecords', function() {
 });
 
 test('bulkCommits changes', function() {
-  var listToUpdate = List.find(1);
-  var listToDelete = List.find(2);
+  var listToUpdate = List.find('l1');
+  var listToDelete = List.find('l2');
   List.createRecord({name: 'bulk new'}); // will find later
 
   clock.tick(1);
@@ -131,9 +131,10 @@ test('bulkCommits changes', function() {
 
   commit();
 
-  var updatedList = List.find(1);
-  var newList = List.find(4);
+  var updatedList = List.find('l1');
+  var newListQuery = store.findQuery(List, {name: 'bulk new'});
   clock.tick(1);
+  var newList = newListQuery.objectAt(0);
 
   assertState('deleted', true, listToDelete);
   assertListNotFoundInStorage(listToDelete);
@@ -142,7 +143,7 @@ test('bulkCommits changes', function() {
 });
 
 test('load hasMany association', function() {
-  list = List.find(1);
+  list = List.find('l1');
   clock.tick(1);
 
   assertStoredList();
@@ -154,7 +155,7 @@ test('load hasMany association', function() {
 });
 
 test('load belongsTo association', function() {
-  item = Item.find(1);
+  item = Item.find('i1');
   clock.tick(1);
   list = item.get('list');
   clock.tick(1);
@@ -163,7 +164,7 @@ test('load belongsTo association', function() {
 });
 
 test('saves belongsTo and hasMany associations', function() {
-  list = List.find(1);
+  list = List.find('l1');
   clock.tick(1);
   item = Item.createRecord({name: '3', list: list});
   commit();
@@ -192,15 +193,5 @@ test('QUOTA_EXCEEDED_ERR when storage is full', function() {
 
   // clean up
   localStorage.removeItem('junk');
-
-   // // get the record back in a state where it will be committed
-   //list.get('stateManager').transitionTo('loaded.created');
-   
-   //commit();
-   
-   //assertState('saving', false);
-   //assertState('error', false);
-   //lists = getStoredLists();
-   //ok(lists[4], 'list saved after first error');
 });
 

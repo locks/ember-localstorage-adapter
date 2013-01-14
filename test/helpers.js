@@ -2,19 +2,17 @@ Ember.ENV.TESTING = true;
 
 var FIXTURES = {
   'App.List': {
-    last_id: 3,
     records: {
-      1: { id: 1, name: 'one', b: true, items: [1, 2] },
-      2: { id: 2, name: 'two', b: false, items: [] },
-      3: { id: 3, name: 'three', b: false, items: [] }
+      'l1': { id: 'l1', name: 'one', b: true, items: ['i1', 'i2'] },
+      'l2': { id: 'l2', name: 'two', b: false, items: [] },
+      'l3': { id: 'l3', name: 'three', b: false, items: [] }
     }
   },
 
   'App.Item': {
-    last_id: 2,
     records: {
-      1: { id: 1, name: 'one', list: 1 },
-      2: { id: 2, name: 'two', list: 1 }
+      'i1': { id: 'i1', name: 'one', list: 'l1' },
+      'i2': { id: 'i2', name: 'two', list: 'l1' }
     }
   }
 };

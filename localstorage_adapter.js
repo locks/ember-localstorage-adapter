@@ -1,12 +1,12 @@
 DS.LSSerializer = DS.Serializer.extend({
 
   addBelongsTo: function(data, record, key, association) {
-    data[key] = parseInt(record.get(key + '.id'), 10);
+    data[key] = record.get(key + '.id');
   },
 
   addHasMany: function(data, record, key, association) {
     data[key] = record.get(key).map(function(record) {
-      return parseInt(record.get('id'), 10);
+      return record.get('id');
     });
   }
 
@@ -16,6 +16,10 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 
   init: function() {
     this._loadData();
+  },
+
+  generateIdForRecord: function() {
+    return Math.random().toString(32).slice(2).substr(0,5);
   },
 
   serializer: DS.LSSerializer.create(),
@@ -91,11 +95,10 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 
   createRecords: function(store, type, records) {
     var namespace = this._namespaceForType(type);
+    records.forEach(function(record) {
+      this._addRecordToNamespace(namespace, record);
+    }, this);
     this._async(function() {
-      var data = [];
-      records.forEach(function(record) {
-        this._addRecordToNamespace(namespace, record);
-      }, this);
       this._didSaveRecords(store, type, records);
     });
   },
@@ -170,14 +173,13 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
   _namespaceForType: function(type) {
     var namespace = type.url || type.toString();
     return this._data[namespace] || (
-      this._data[namespace] = { last_id: 0, records: {}}
+      this._data[namespace] = {records: {}}
     );
   },
 
   _addRecordToNamespace: function(namespace, record) {
-    var id = namespace.last_id = namespace.last_id + 1;
-    record.set('id', id);
-    namespace.records[id] = record.toData({includeId:true});
+    var data = record.toData({includeId: true});
+    namespace.records[data.id] = data;
   },
 
   _async: function(callback) {

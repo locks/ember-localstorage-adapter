@@ -1,4 +1,4 @@
-DS.LSSerializer = DS.Serializer.extend({
+DS.LSSerializer = DS.JSONSerializer.extend({
 
   addBelongsTo: function(data, record, key, association) {
     data[key] = record.get(key + '.id');
@@ -8,6 +8,24 @@ DS.LSSerializer = DS.Serializer.extend({
     data[key] = record.get(key).map(function(record) {
       return record.get('id');
     });
+  },
+
+  // extract expects a root key, we don't want to save all these keys to
+  // localStorage so we generate the root keys here
+  extract: function(loader, json, type, record) {
+    this._super(loader, this.rootJSON(json, type), type, record);
+  },
+
+  extractMany: function(loader, json, type, records) {
+    this._super(loader, this.rootJSON(json, type, 'pluralize'), type, records);
+  },
+
+  rootJSON: function(json, type, pluralize) {
+    var root = this.rootForType(type);
+    if (pluralize == 'pluralize') { root = this.pluralize(root); }
+    var rootedJSON = {};
+    rootedJSON[root] = json;
+    return rootedJSON;
   }
 
 });
@@ -27,7 +45,10 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
   find: function(store, type, id) {
     var namespace = this._namespaceForType(type);
     this._async(function(){
-      store.load(type, id, Ember.copy(namespace.records[id]));
+      var copy = Ember.copy(namespace.records[id]);
+      Ember.run(this, function() {
+        this.didFindRecord(store, type, copy, id);
+      });
     });
   },
 
@@ -38,7 +59,9 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
       for (var i = 0; i < ids.length; i++) {
         results.push(Ember.copy(namespace.records[ids[i]]));
       }
-      store.loadMany(type, results);
+      Ember.run(this, function() {
+        this.didFindMany(store, type, results);
+      });
     });
   },
 
@@ -78,7 +101,9 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
           results.push(record);
         }
       }
-      recordArray.load(results);
+      Ember.run(this, function() {
+        this.didFindQuery(store, type, results, recordArray);
+      });
     });
   },
 
@@ -89,7 +114,9 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
       for (var id in namespace.records) {
         results.push(Ember.copy(namespace.records[id]));
       }
-      store.loadMany(type, results);
+      Ember.run(this, function() {
+        this.didFindAll(store, type, results);
+      });
     });
   },
 
@@ -108,7 +135,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
     this._async(function() {
       records.forEach(function(record) {
         var id = record.get('id');
-        namespace.records[id] = record.toData({includeId:true});
+        namespace.records[id] = record.serialize({includeId:true});
       }, this);
       this._didSaveRecords(store, type, records);
     });
@@ -148,10 +175,14 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
   _didSaveRecords: function(store, type, records) {
     var success = this._saveData();
     if (success) {
-      store.didSaveRecords(records);
+      Ember.run(function() {
+        store.didSaveRecords(records);
+      });
     } else {
       records.forEach(function(record) {
-        store.recordWasError(record);
+        Ember.run(function() {
+          store.recordWasError(record);
+        });
       });
       this.trigger('QUOTA_EXCEEDED_ERR', records);
     }
@@ -178,7 +209,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
   },
 
   _addRecordToNamespace: function(namespace, record) {
-    var data = record.toData({includeId: true});
+    var data = record.serialize({includeId: true});
     namespace.records[data.id] = data;
   },
 

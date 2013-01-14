@@ -20,7 +20,7 @@ var FIXTURES = {
 function assertStoredList(l) {
   l = l || list;
   var storedList = getStoredList(l.get('id'));
-  deepEqual(storedList, l.toData({includeId: true}),
+  deepEqual(storedList, l.serialize({includeId: true}),
             'list data matches stored list');
 }
 
@@ -31,7 +31,7 @@ function assertStoredLists(ls) {
 function assertStoredItem(i) {
   i = i || item;
   var storedItem = getStoredItem(i.get('id'));
-  deepEqual(storedItem, i.toData({includeId: true}),
+  deepEqual(storedItem, i.serialize({includeId: true}),
             'item data matches stored list');
 }
 

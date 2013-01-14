@@ -3,7 +3,7 @@ Ember Data Local Storage Adapter
 
 Store your ember application data in localStorage.
 
-Currently tested against ember-data revision 9.
+Currently tested against ember-data revision 11.
 
 Usage
 -----
@@ -12,7 +12,7 @@ Include `localstorage_adapter.js` in your app and then like all adapters:
 
 ```js
 App.store = DS.Store.create({
-  revision: 9,
+  revision: 11,
   adapter: DS.LSAdapter.create()
 });
 

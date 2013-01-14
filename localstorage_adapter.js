@@ -82,29 +82,32 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
   findQuery: function(store, type, query, recordArray) {
     var namespace = this._namespaceForType(type);
     this._async(function() {
-      var results = [];
-      // grossness to follow, miss coffeescript ...
-      // (also realize this is my fault not JavaScript's)
-      var id, record, property, test, push;
-      for (id in namespace.records) {
-        record = namespace.records[id];
-        for (property in query) {
-          test = query[property];
-          push = false;
-          if (Object.prototype.toString.call(test) == '[object RegExp]') {
-            push = test.test(record[property]);
-          } else {
-            push = record[property] === test;
-          }
-        }
-        if (push) {
-          results.push(record);
-        }
-      }
+      var results = this.query(namespace.records, query);
       Ember.run(this, function() {
         this.didFindQuery(store, type, results, recordArray);
       });
     });
+  },
+
+  query: function(records, query) {
+    var results = [];
+    var id, record, property, test, push;
+    for (id in records) {
+      record = records[id];
+      for (property in query) {
+        test = query[property];
+        push = false;
+        if (Object.prototype.toString.call(test) == '[object RegExp]') {
+          push = test.test(record[property]);
+        } else {
+          push = record[property] === test;
+        }
+      }
+      if (push) {
+        results.push(record);
+      }
+    }
+    return results;
   },
 
   findAll: function(store, type) {

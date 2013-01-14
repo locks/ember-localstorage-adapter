@@ -1,6 +1,7 @@
 (function() {
 window.DS = Ember.Namespace.create({
-  CURRENT_API_REVISION: 9
+  // this one goes to 11
+  CURRENT_API_REVISION: 11
 });
 
 })();
@@ -8,7 +9,34 @@ window.DS = Ember.Namespace.create({
 
 
 (function() {
+var DeferredMixin = Ember.DeferredMixin,  // ember-runtime/mixins/deferred
+    Evented = Ember.Evented,              // ember-runtime/mixins/evented
+    run = Ember.run,                      // ember-metal/run-loop
+    get = Ember.get;                      // ember-metal/accessors
+
+var LoadPromise = Ember.Mixin.create(Evented, DeferredMixin, {
+  init: function() {
+    this._super.apply(this, arguments);
+    this.one('didLoad', function() {
+      run(this, 'resolve', this);
+    });
+
+    if (get(this, 'isLoaded')) {
+      this.trigger('didLoad');
+    }
+  }
+});
+
+DS.LoadPromise = LoadPromise;
+
+})();
+
+
+
+(function() {
 var get = Ember.get, set = Ember.set;
+
+var LoadPromise = DS.LoadPromise; // system/mixins/load_promise
 
 /**
   A record array is an array that contains records of a certain type. The record
@@ -18,7 +46,7 @@ var get = Ember.get, set = Ember.set;
   in response to queries.
 */
 
-DS.RecordArray = Ember.ArrayProxy.extend(Ember.Evented, {
+DS.RecordArray = Ember.ArrayProxy.extend(Ember.Evented, LoadPromise, {
   /**
     The model type contained by this record array.
 
@@ -40,19 +68,19 @@ DS.RecordArray = Ember.ArrayProxy.extend(Ember.Evented, {
 
   objectAtContent: function(index) {
     var content = get(this, 'content'),
-        clientId = content.objectAt(index),
+        reference = content.objectAt(index),
         store = get(this, 'store');
 
-    if (clientId !== undefined) {
-      return store.findByClientId(get(this, 'type'), clientId);
+    if (reference) {
+      return store.findByClientId(get(this, 'type'), reference.clientId);
     }
   },
 
   materializedObjectAt: function(index) {
-    var clientId = get(this, 'content').objectAt(index);
-    if (!clientId) { return; }
+    var reference = get(this, 'content').objectAt(index);
+    if (!reference) { return; }
 
-    if (get(this, 'store').recordIsMaterialized(clientId)) {
+    if (get(this, 'store').recordIsMaterialized(reference.clientId)) {
       return this.objectAt(index);
     }
   },
@@ -64,6 +92,14 @@ DS.RecordArray = Ember.ArrayProxy.extend(Ember.Evented, {
         type = get(this, 'type');
 
     store.fetchAll(type, this);
+  },
+
+  addReference: function(reference) {
+    get(this, 'content').addObject(reference);
+  },
+
+  removeReference: function(reference) {
+    get(this, 'content').removeObject(reference);
   }
 });
 
@@ -104,163 +140,19 @@ DS.AdapterPopulatedRecordArray = DS.RecordArray.extend({
     throw new Error("The result of a server query (on " + type + ") is immutable.");
   },
 
-  load: function(array) {
+  load: function(references) {
     var store = get(this, 'store'), type = get(this, 'type');
 
-    var clientIds = store.loadMany(type, array).clientIds;
-
     this.beginPropertyChanges();
-    set(this, 'content', Ember.A(clientIds));
+    set(this, 'content', Ember.A(references));
     set(this, 'isLoaded', true);
     this.endPropertyChanges();
 
-    this.trigger('didLoad');
-  }
-});
-
-})();
-
-
-
-(function() {
-var get = Ember.get, set = Ember.set, guidFor = Ember.guidFor;
-
-var Set = function() {
-  this.hash = {};
-  this.list = [];
-};
-
-Set.prototype = {
-  add: function(item) {
-    var hash = this.hash,
-        guid = guidFor(item);
-
-    if (hash.hasOwnProperty(guid)) { return; }
-
-    hash[guid] = true;
-    this.list.push(item);
-  },
-
-  remove: function(item) {
-    var hash = this.hash,
-        guid = guidFor(item);
-
-    if (!hash.hasOwnProperty(guid)) { return; }
-
-    delete hash[guid];
-    var list = this.list,
-        index = Ember.EnumerableUtils.indexOf(this, item);
-
-    list.splice(index, 1);
-  },
-
-  isEmpty: function() {
-    return this.list.length === 0;
-  }
-};
-
-var LoadedState = Ember.State.extend({
-  recordWasAdded: function(manager, record) {
-    var dirty = manager.dirty, observer;
-    dirty.add(record);
-
-    observer = function() {
-      if (!get(record, 'isDirty')) {
-        record.removeObserver('isDirty', observer);
-        manager.send('childWasSaved', record);
-      }
-    };
-
-    record.addObserver('isDirty', observer);
-  },
-
-  recordWasRemoved: function(manager, record) {
-    var dirty = manager.dirty, observer;
-    dirty.add(record);
-
-    observer = function() {
-      record.removeObserver('isDirty', observer);
-      if (!get(record, 'isDirty')) { manager.send('childWasSaved', record); }
-    };
-
-    record.addObserver('isDirty', observer);
-  }
-});
-
-var states = {
-  loading: Ember.State.create({
-    isLoaded: false,
-    isDirty: false,
-
-    loadedRecords: function(manager, count) {
-      manager.decrement(count);
-    },
-
-    becameLoaded: function(manager) {
-      manager.transitionTo('clean');
-    }
-  }),
-
-  clean: LoadedState.create({
-    isLoaded: true,
-    isDirty: false,
-
-    recordWasAdded: function(manager, record) {
-      this._super(manager, record);
-      manager.goToState('dirty');
-    },
-
-    update: function(manager, clientIds) {
-      var manyArray = manager.manyArray;
-      set(manyArray, 'content', clientIds);
-    }
-  }),
-
-  dirty: LoadedState.create({
-    isLoaded: true,
-    isDirty: true,
-
-    childWasSaved: function(manager, child) {
-      var dirty = manager.dirty;
-      dirty.remove(child);
-
-      if (dirty.isEmpty()) { manager.send('arrayBecameSaved'); }
-    },
-
-    arrayBecameSaved: function(manager) {
-      manager.goToState('clean');
-    }
-  })
-};
-
-DS.ManyArrayStateManager = Ember.StateManager.extend({
-  manyArray: null,
-  initialState: 'loading',
-  states: states,
-
-  /**
-   This number is used to keep track of the number of outstanding
-   records that must be loaded before the array is considered
-   loaded. As results stream in, this number is decremented until
-   it becomes zero, at which case the `isLoaded` flag will be set
-   to true
-  */
-  counter: 0,
-
-  init: function() {
-    this._super();
-    this.dirty = new Set();
-    this.counter = get(this, 'manyArray.length');
-  },
-
-  decrement: function(count) {
-    var counter = this.counter = this.counter - count;
-
-    Ember.assert("Somehow the ManyArray loaded counter went below 0. This is probably an ember-data bug. Please report it at https://github.com/emberjs/data/issues", counter >= 0);
-
-    if (counter === 0) {
-      this.send('becameLoaded');
-    }
+    var self = this; 
+    // TODO: does triggering didLoad event should be the last action of the runLoop?
+    Ember.run.once(function() {
+      self.trigger('didLoad');
+    });
   }
 });
 
@@ -273,14 +165,14 @@ var get = Ember.get, set = Ember.set;
 
 /**
   A ManyArray is a RecordArray that represents the contents of a has-many
-  association.
+  relationship.
 
-  The ManyArray is instantiated lazily the first time the association is
+  The ManyArray is instantiated lazily the first time the relationship is
   requested.
 
   ### Inverses
 
-  Often, the associations in Ember Data applications will have
+  Often, the relationships in Ember Data applications will have
   an inverse. For example, imagine the following models are
   defined:
 
@@ -294,12 +186,12 @@ var get = Ember.get, set = Ember.set;
 
   If you created a new instance of `App.Post` and added
   a `App.Comment` record to its `comments` has-many
-  association, you would expect the comment's `post`
+  relationship, you would expect the comment's `post`
   property to be set to the post that contained
   the has-many.
 
-  We call the record to which an association belongs the
-  association's _owner_.
+  We call the record to which a relationship belongs the
+  relationship's _owner_.
 */
 DS.ManyArray = DS.RecordArray.extend({
   init: function() {
@@ -310,7 +202,7 @@ DS.ManyArray = DS.RecordArray.extend({
   /**
     @private
 
-    The record to which this association belongs.
+    The record to which this relationship belongs.
 
     @property {DS.Model}
   */
@@ -333,19 +225,19 @@ DS.ManyArray = DS.RecordArray.extend({
   },
 
   fetch: function() {
-    var clientIds = get(this, 'content'),
+    var references = get(this, 'content'),
         store = get(this, 'store'),
         type = get(this, 'type');
 
-    store.fetchUnloadedClientIds(type, clientIds);
+    store.fetchUnloadedReferences(type, references);
   },
 
   // Overrides Ember.Array's replace method to implement
   replaceContent: function(index, removed, added) {
     // Map the array of record objects into an array of  client ids.
     added = added.map(function(record) {
-      Ember.assert("You can only add records of " + (get(this, 'type') && get(this, 'type').toString()) + " to this association.", !get(this, 'type') || (get(this, 'type') === record.constructor));
-      return record.get('clientId');
+      Ember.assert("You can only add records of " + (get(this, 'type') && get(this, 'type').toString()) + " to this relationship.", !get(this, 'type') || (get(this, 'type') === record.constructor));
+      return get(record, '_reference');
     }, this);
 
     this._super(index, removed, added);
@@ -359,7 +251,7 @@ DS.ManyArray = DS.RecordArray.extend({
     var owner = get(this, 'owner'),
         name = get(this, 'name');
 
-    if (!owner._suspendedAssociations) {
+    if (!owner._suspendedRelationships) {
       // This code is the first half of code that continues inside
       // of arrayContentDidChange. It gets or creates a change from
       // the child object, adds the current owner as the old
@@ -370,18 +262,15 @@ DS.ManyArray = DS.RecordArray.extend({
       // the `arrayContentDidChange` will set `newParent` on
       // the change.
       for (var i=index; i<index+removed; i++) {
-        var clientId = get(this, 'content').objectAt(i);
-        //var record = this.objectAt(i);
-        //if (!record) { continue; }
+        var reference = get(this, 'content').objectAt(i);
 
-        var change = DS.OneToManyChange.forChildAndParent(clientId, get(this, 'store'), {
+        var change = DS.RelationshipChange.createChange(owner.get('clientId'), reference.clientId, get(this, 'store'), {
           parentType: owner.constructor,
-          hasManyName: name
+          changeType: "remove",
+          kind: "hasMany",
+          key: name
         });
-        change.hasManyName = name;
 
-        if (change.oldParent === undefined) { change.oldParent = get(owner, 'clientId'); }
-        change.newParent = null;
         this._changesToSync.add(change);
       }
     }
@@ -393,25 +282,25 @@ DS.ManyArray = DS.RecordArray.extend({
     this._super.apply(this, arguments);
 
     var owner = get(this, 'owner'),
-        name = get(this, 'name');
+        name = get(this, 'name'),
+        store = get(this, 'store');
 
-    if (!owner._suspendedAssociations) {
+    if (!owner._suspendedRelationships) {
       // This code is the second half of code that started in
       // `arrayContentWillChange`. It gets or creates a change
       // from the child object, and adds the current owner as
       // the new parent.
       for (var i=index; i<index+added; i++) {
-        var clientId = get(this, 'content').objectAt(i);
+        var reference = get(this, 'content').objectAt(i);
 
-        var change = DS.OneToManyChange.forChildAndParent(clientId, get(this, 'store'), {
+        var change = DS.RelationshipChange.createChange(owner.get('clientId'), reference.clientId, store, {
           parentType: owner.constructor,
-          hasManyName: name
+          changeType: "add",
+          kind:"hasMany",
+          key: name
         });
         change.hasManyName = name;
 
-        // The oldParent will be looked up in `sync` if it
-        // was not set by `belongsToWillChange`.
-        change.newParent = get(owner, 'clientId');
         this._changesToSync.add(change);
       }
 
@@ -423,6 +312,7 @@ DS.ManyArray = DS.RecordArray.extend({
       this._changesToSync.forEach(function(change) {
         change.sync();
       });
+      DS.OneToManyChange.ensureSameTransaction(this._changesToSync, store);
       this._changesToSync.clear();
     }
   },
@@ -440,40 +330,8 @@ DS.ManyArray = DS.RecordArray.extend({
     this.pushObject(record);
 
     return record;
-  },
-
-  /**
-    METHODS FOR USE BY INVERSE RELATIONSHIPS
-    ========================================
-
-    These methods exists so that belongsTo relationships can
-    set their inverses without causing an infinite loop.
-
-    This creates two APIs:
-
-    * the normal enumerable API, which is used by clients
-      of the `ManyArray` and triggers a change to inverse
-      `belongsTo` relationships.
-    * `removeFromContent` and `addToContent`, which are
-      used by inverse relationships and do not trigger a
-      change to `belongsTo` relationships.
-
-    Unlike the normal `addObject` and `removeObject` APIs,
-    these APIs manipulate the `content` array without
-    triggering side-effects.
-  */
-
-  /** @private */
-  removeFromContent: function(record) {
-    var clientId = get(record, 'clientId');
-    get(this, 'content').removeObject(clientId);
-  },
-
-  /** @private */
-  addToContent: function(record) {
-    var clientId = get(record, 'clientId');
-    get(this, 'content').addObject(clientId);
   }
+
 });
 
 })();
@@ -1011,8 +869,9 @@ DS._Mappable.generateMapFunctionFor = function(mapName, transform) {
 
 (function() {
 /*globals Ember*/
-var get = Ember.get, set = Ember.set, fmt = Ember.String.fmt;
-
+/*jshint eqnull:true*/
+var get = Ember.get, set = Ember.set, fmt = Ember.String.fmt, once = Ember.run.once;
+var forEach = Ember.EnumerableUtils.forEach;
 // These values are used in the data cache when clientIds are
 // needed but the underlying data has not yet been loaded by
 // the server.
@@ -1040,7 +899,7 @@ var CREATED = { created: true };
 // ID into the URL, and if we later try to deserialize that URL and find the
 // corresponding record, we will not know if it is a string or a number.
 var coerceId = function(id) {
-  return id+'';
+  return id == null ? null : id+'';
 };
 
 var map = Ember.EnumerableUtils.map;
@@ -1098,8 +957,10 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     this.clientIdToId = {};
     this.clientIdToType = {};
     this.clientIdToData = {};
+    this.clientIdToPrematerializedData = {};
     this.recordArraysByClientId = {};
     this.relationshipChanges = {};
+    this.recordReferences = {};
 
     // Internally, we maintain a map of all unloaded IDs requested by
     // a ManyArray. As the adapter loads data into the store, the
@@ -1132,6 +993,31 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     return DS.Transaction.create({ store: this });
   },
 
+  ensureSameTransaction: function(records){
+    var transactions = Ember.A();
+    forEach( records, function(record){
+      if (record){ transactions.pushObject(get(record, 'transaction')); }
+    });
+
+    var transaction = transactions.reduce(function(prev, t) {
+      if (!get(t, 'isDefault')) {
+        if (prev === null) { return t; }
+        Ember.assert("All records in a changed relationship must be in the same transaction. You tried to change the relationship between records when one is in " + t + " and the other is in " + prev, t === prev);
+      }
+
+      return prev;
+    }, null);
+
+    if (transaction) {
+      forEach( records, function(record){
+        if (record){ transaction.add(record); }
+      });
+    } else {
+      transaction = transactions.objectAt(0);
+    }
+    return transaction;
+
+   },
   /**
     @private
 
@@ -1157,6 +1043,8 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
 
     cidToData[clientId] = MATERIALIZED;
 
+    var prematerialized = this.clientIdToPrematerializedData[clientId];
+
     // Ensures the record's data structures are setup
     // before being populated by the adapter.
     record.setupData();
@@ -1165,7 +1053,7 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
       // Instructs the adapter to extract information from the
       // opaque data and materialize the record's attributes and
       // relationships.
-      adapter.materialize(record, data);
+      adapter.materialize(record, data, prematerialized);
     }
   },
 
@@ -1178,7 +1066,7 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     "changes" to unmaterialized records do not trigger mass
     materialization.
 
-    For example, if a parent record in an association with a large
+    For example, if a parent record in a relationship with a large
     number of children is deleted, we want to avoid materializing
     those children.
 
@@ -1197,7 +1085,7 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
 
     @property {DS.Adapter|String}
   */
-  adapter: 'DS.Adapter',
+  adapter: 'DS.RESTAdapter',
 
   /**
     @private
@@ -1205,7 +1093,7 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     Returns a JSON representation of the record using the adapter's
     serialization strategy. This method exists primarily to enable
     a record, which has access to its store (but not the store's
-    adapter) to provide a `toData()` convenience.
+    adapter) to provide a `serialize()` convenience.
 
     The available options are:
 
@@ -1215,8 +1103,8 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     @param {DS.Model} record the record to serialize
     @param {Object} options an options hash
   */
-  toData: function(record, options) {
-    return this.adapterForType(record.constructor).toData(record, options);
+  serialize: function(record, options) {
+    return this.adapterForType(record.constructor).serialize(record, options);
   },
 
   /**
@@ -1237,7 +1125,7 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
   _adapter: Ember.computed(function() {
     var adapter = get(this, 'adapter');
     if (typeof adapter === 'string') {
-      adapter = get(this, adapter, false) || get(window, adapter);
+      adapter = get(this, adapter, false) || get(Ember.lookup, adapter);
     }
 
     if (DS.Adapter.detect(adapter)) {
@@ -1304,7 +1192,7 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     // client-side ID generators will use something like uuid.js
     // to avoid conflicts.
     var adapter;
-    if (Ember.none(id)) {
+    if (Ember.isNone(id)) {
       adapter = get(this, 'adapter');
       if (adapter && adapter.generateIdForRecord) {
         id = coerceId(adapter.generateIdForRecord(this, record));
@@ -1330,12 +1218,19 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     // the `loaded` state.
     record.loadedData();
 
+    // Make sure the data is set up so the record doesn't
+    // try to materialize its nonexistent data.
+    record.setupData();
+
     // Store the record we just created in the record cache for
     // this clientId.
     this.recordCache[clientId] = record;
 
     // Set the properties specified on the record.
     record.setProperties(properties);
+
+    // Resolve record promise
+    Ember.run(record, 'resolve', record);
 
     return record;
   },
@@ -1466,6 +1361,18 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     return record;
   },
 
+  reloadRecord: function(record) {
+    var type = record.constructor,
+        adapter = this.adapterForType(type),
+        id = get(record, 'id');
+
+    Ember.assert("You cannot update a record without an ID", id);
+    Ember.assert("You tried to update a record but you have no adapter (for " + type + ")", adapter);
+    Ember.assert("You tried to update a record but your adapter does not implement `find`", adapter.find);
+
+    adapter.find(this, type, id);
+  },
+
   /**
     @private
 
@@ -1521,35 +1428,36 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     In preparation for loading, this method also marks any unloaded
     `clientId`s as loading.
   */
-  neededClientIds: function(type, clientIds) {
-    var neededClientIds = [],
+  neededReferences: function(type, references) {
+    var neededReferences = [],
         cidToData = this.clientIdToData,
-        clientId;
+        reference;
 
-    for (var i=0, l=clientIds.length; i<l; i++) {
-      clientId = clientIds[i];
-      if (cidToData[clientId] === UNLOADED) {
-        neededClientIds.push(clientId);
-        cidToData[clientId] = LOADING;
+    for (var i=0, l=references.length; i<l; i++) {
+      reference = references[i];
+
+      if (cidToData[reference.clientId] === UNLOADED) {
+        neededReferences.push(reference);
+        cidToData[reference.clientId] = LOADING;
       }
     }
 
-    return neededClientIds;
+    return neededReferences;
   },
 
   /**
     @private
 
-    This method is the entry point that associations use to update
+    This method is the entry point that relationships use to update
     themselves when their underlying data changes.
 
     First, it determines which of its `clientId`s are still unloaded,
     then converts the needed `clientId`s to IDs and invokes `findMany`
     on the adapter.
   */
-  fetchUnloadedClientIds: function(type, clientIds) {
-    var neededClientIds = this.neededClientIds(type, clientIds);
-    this.fetchMany(type, neededClientIds);
+  fetchUnloadedReferences: function(type, references) {
+    var neededReferences = this.neededReferences(type, references);
+    this.fetchMany(type, neededReferences);
   },
 
   /**
@@ -1559,30 +1467,53 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     `clientId`s into IDs, and then invokes the adapter's `findMany`
     method.
 
-    It is used both by a brand new association (via the `findMany`
-    method) or when the data underlying an existing association
-    changes (via the `fetchUnloadedClientIds` method).
+    It is used both by a brand new relationship (via the `findMany`
+    method) or when the data underlying an existing relationship
+    changes (via the `fetchUnloadedReferences` method).
   */
-  fetchMany: function(type, clientIds) {
-    var clientIdToId = this.clientIdToId;
+  fetchMany: function(type, references) {
+    if (!references.length) { return; }
 
-    var neededIds = map(clientIds, function(clientId) {
-      return clientIdToId[clientId];
+    var ids = map(references, function(reference) {
+      return reference.id;
     });
 
-    if (!neededIds.length) { return; }
-
     var adapter = this.adapterForType(type);
-    if (adapter && adapter.findMany) { adapter.findMany(this, type, neededIds); }
+    if (adapter && adapter.findMany) { adapter.findMany(this, type, ids); }
     else { throw "Adapter is either null or does not implement `findMany` method"; }
+  },
+
+  referenceForId: function(type, id) {
+    var clientId = this.clientIdForId(type, id);
+    return this.referenceForClientId(clientId);
+  },
+
+  referenceForClientId: function(clientId) {
+    var references = this.recordReferences;
+
+    if (references[clientId]) {
+      return references[clientId];
+    }
+
+    var type = this.clientIdToType[clientId];
+
+    return references[clientId] = {
+      id: this.idForClientId(clientId),
+      clientId: clientId,
+      type: type
+    };
+  },
+
+  recordForReference: function(reference) {
+    return this.findByClientId(reference.type, reference.clientId);
   },
 
   /**
     @private
 
-    `findMany` is the entry point that associations use to generate a
+    `findMany` is the entry point that relationships use to generate a
     new `ManyArray` for the list of IDs specified by the server for
-    the association.
+    the relationship.
 
     Its responsibilities are:
 
@@ -1609,27 +1540,34 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
 
     if (!Ember.isArray(ids)) {
       var adapter = this.adapterForType(type);
-      if (adapter && adapter.findAssociation) { adapter.findAssociation(this, record, relationship, ids); }
+      if (adapter && adapter.findHasMany) { adapter.findHasMany(this, record, relationship, ids); }
       else { throw fmt("Adapter is either null or does not implement `findMany` method", this); }
 
       return this.createManyArray(type, Ember.A());
     }
 
-    ids = map(ids, function(id) { return coerceId(id); });
-    var clientIds = this.clientIdsForIds(type, ids);
+    // Coerce server IDs into Record Reference
+    var references = map(ids, function(reference) {
+      if (typeof reference !== 'object' && reference !== null) {
+        return this.referenceForId(type, reference);
+      }
 
-    var neededClientIds = this.neededClientIds(type, clientIds),
-        manyArray = this.createManyArray(type, Ember.A(clientIds)),
+      return reference;
+    }, this);
+
+    var neededReferences = this.neededReferences(type, references),
+        manyArray = this.createManyArray(type, Ember.A(references)),
         loadingRecordArrays = this.loadingRecordArrays,
-        clientId, i, l;
+        reference, clientId, i, l;
 
     // Start the decrementing counter on the ManyArray at the number of
     // records we need to load from the adapter
-    manyArray.loadingRecordsCount(neededClientIds.length);
+    manyArray.loadingRecordsCount(neededReferences.length);
 
-    if (neededClientIds.length) {
-      for (i=0, l=neededClientIds.length; i<l; i++) {
-        clientId = neededClientIds[i];
+    if (neededReferences.length) {
+      for (i=0, l=neededReferences.length; i<l; i++) {
+        reference = neededReferences[i];
+        clientId = reference.clientId;
 
         // keep track of the record arrays that a given loading record
         // is part of. This way, if the same record is in multiple
@@ -1642,10 +1580,14 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
         }
       }
 
-      this.fetchMany(type, neededClientIds);
+      this.fetchMany(type, neededReferences);
     } else {
       // all requested records are available
       manyArray.set('isLoaded', true);
+
+      Ember.run.once(function() {
+        manyArray.trigger('didLoad');
+      });
     }
 
     return manyArray;
@@ -1786,10 +1728,16 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
   },
 
   /**
-    TODO: What is this method trying to do?
+    This method returns if a certain record is already loaded
+    in the store. Use this function to know beforehand if a find()
+    will result in a request or that it will be a cache hit.
+
+    @param {Class} type
+    @param {string} id
+    @return {boolean}
   */
   recordIsLoaded: function(type, id) {
-    return !Ember.none(this.typeMapFor(type).idToCid[id]);
+    return !Ember.isNone(this.typeMapFor(type).idToCid[id]);
   },
 
   // ............
@@ -2022,7 +1970,7 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     should acknowledge the changes when the child record is
     saved.
 
-        record.eachAssociation(function(name, meta) {
+        record.eachRelationship(function(name, meta) {
           if (meta.kind === 'belongsTo') {
             store.didUpdateRelationship(record, name);
           }
@@ -2059,12 +2007,8 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
   */
   didUpdateRelationship: function(record, relationshipName) {
     var relationship = this.relationshipChangeFor(get(record, 'clientId'), relationshipName);
+    //TODO(Igor)
     if (relationship) { relationship.adapterDidUpdate(); }
-  },
-
-  materializeHasMany: function(record, name, ids) {
-    record.materializeHasMany(name, ids);
-    record.adapterDidUpdateHasMany(name);
   },
 
   /**
@@ -2152,10 +2096,11 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
         type = record.constructor,
         id = this.preprocessData(type, data);
 
-    Ember.assert("An adapter cannot assign a new id to a record that already has an id. " + record + " had id: " + oldId + " and you tried to update it with " + id + ". This likely happened because your server returned data in response to a find or update that had a different id than the one you sent.", oldId === undefined || id === oldId);
+    Ember.assert("An adapter cannot assign a new id to a record that already has an id. " + record + " had id: " + oldId + " and you tried to update it with " + id + ". This likely happened because your server returned data in response to a find or update that had a different id than the one you sent.", oldId === null || id === oldId);
 
     typeMap.idToCid[id] = clientId;
     this.clientIdToId[clientId] = id;
+    this.referenceForClientId(clientId).id = id;
   },
 
   /**
@@ -2172,7 +2117,6 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     @return {String} id the id represented by the data
   */
   preprocessData: function(type, data) {
-    this.adapterForType(type).extractEmbeddedData(this, type, data);
     return this.adapterForType(type).extractId(type, data);
   },
 
@@ -2259,6 +2203,12 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     }
   },
 
+  updateRecordArraysLater: function(type, clientId) {
+    Ember.run.once(this, function() {
+      this.updateRecordArrays(type, clientId);
+    });
+  },
+
   /**
     @private
 
@@ -2319,13 +2269,14 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     var alreadyInArray = content.indexOf(clientId) !== -1;
 
     var recordArrays = this.recordArraysForClientId(clientId);
+    var reference = this.referenceForClientId(clientId);
 
-    if (shouldBeInArray && !alreadyInArray) {
+    if (shouldBeInArray) {
       recordArrays.add(array);
-      content.pushObject(clientId);
-    } else if (!shouldBeInArray && alreadyInArray) {
+      array.addReference(reference);
+    } else if (!shouldBeInArray) {
       recordArrays.remove(array);
-      content.removeObject(clientId);
+      array.removeReference(reference);
     }
   },
 
@@ -2338,12 +2289,11 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     @param {DS.Model} record
   */
   removeFromRecordArrays: function(record) {
-    var clientId = get(record, 'clientId');
-    var recordArrays = this.recordArraysForClientId(clientId);
+    var reference = get(record, '_reference');
+    var recordArrays = this.recordArraysForClientId(reference.clientId);
 
     recordArrays.forEach(function(array) {
-      var content = get(array, 'content');
-      content.removeObject(clientId);
+      array.removeReference(reference);
     });
   },
 
@@ -2449,10 +2399,18 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     @param {String|Number} id
     @param {Object} data the data to load
   */
-  load: function(type, id, data) {
-    if (data === undefined) {
-      data = id;
+  load: function(type, data, prematerialized) {
+    var id;
 
+    if (typeof data === 'number' || typeof data === 'string') {
+      id = data;
+      data = prematerialized;
+      prematerialized = null;
+    }
+
+    if (prematerialized && prematerialized.id) {
+      id = prematerialized.id;
+    } else if (id === undefined) {
       var adapter = this.adapterForType(type);
       id = this.preprocessData(type, data);
     }
@@ -2461,44 +2419,56 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
 
     var typeMap = this.typeMapFor(type),
         cidToData = this.clientIdToData,
-        clientId = typeMap.idToCid[id];
+        clientId = typeMap.idToCid[id],
+        cidToPrematerialized = this.clientIdToPrematerializedData;
 
     if (clientId !== undefined) {
       cidToData[clientId] = data;
+      cidToPrematerialized[clientId] = prematerialized;
 
       var record = this.recordCache[clientId];
       if (record) {
-        record.loadedData();
+        once(record, 'loadedData');
       }
     } else {
       clientId = this.pushData(data, id, type);
+      cidToPrematerialized[clientId] = prematerialized;
     }
 
-    this.updateRecordArrays(type, clientId);
+    this.updateRecordArraysLater(type, clientId);
 
-    return { id: id, clientId: clientId };
+    return this.referenceForClientId(clientId);
+  },
+
+  prematerialize: function(reference, prematerialized) {
+    this.clientIdToPrematerializedData[reference.clientId] = prematerialized;
   },
 
   loadMany: function(type, ids, dataList) {
-    var clientIds = Ember.A([]);
-
     if (dataList === undefined) {
       dataList = ids;
-      ids = [];
-
-      var adapter = this.adapterForType(type);
-
       ids = map(dataList, function(data) {
         return this.preprocessData(type, data);
       }, this);
     }
 
-    for (var i=0, l=get(ids, 'length'); i<l; i++) {
-      var loaded = this.load(type, ids[i], dataList[i]);
-      clientIds.pushObject(loaded.clientId);
-    }
+    return map(ids, function(id, i) {
+      return this.load(type, id, dataList[i]);
+    }, this);
+  },
 
-    return { clientIds: clientIds, ids: ids };
+  loadHasMany: function(record, key, ids) {
+    record.materializeHasMany(key, ids);
+
+    // Update any existing many arrays that use the previous IDs,
+    // if necessary.
+    record.hasManyDidChange(key);
+
+    var relationship = record.cacheFor(key);
+
+    // TODO (tomdale) this assumes that loadHasMany *always* means
+    // that the records for the provided IDs are loaded.
+    if (relationship) { set(relationship, 'isLoaded', true); }
   },
 
   /** @private
@@ -2586,37 +2556,76 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
   // . RELATIONSHIP CHANGES .
   // ........................
 
-  addRelationshipChangeFor: function(clientId, key, change) {
+  addRelationshipChangeFor: function(clientId, childKey, parentClientId, parentKey, change) {
+    var key = childKey + parentKey;
     var changes = this.relationshipChanges;
     if (!(clientId in changes)) {
       changes[clientId] = {};
     }
-
-    changes[clientId][key] = change;
+    if (!(parentClientId in changes[clientId])) {
+      changes[clientId][parentClientId] = {};
+    }
+    if (!(key in changes[clientId][parentClientId])) {
+      changes[clientId][parentClientId][key] = {};
+    }
+    changes[clientId][parentClientId][key][change.changeType] = change;
   },
 
-  removeRelationshipChangeFor: function(clientId, key) {
+  removeRelationshipChangeFor: function(clientId, childKey, parentClientId, parentKey, type) {
     var changes = this.relationshipChanges;
-    if (!(clientId in changes)) {
+    var key = childKey + parentKey;
+    if (!(clientId in changes) || !(parentClientId in changes[clientId]) || !(key in changes[clientId][parentClientId])){
       return;
     }
-
-    delete changes[clientId][key];
+    delete changes[clientId][parentClientId][key][type];
   },
 
-  relationshipChangeFor: function(clientId, key) {
+  relationshipChangeFor: function(clientId, childKey, parentClientId, parentKey, type) {
     var changes = this.relationshipChanges;
-    if (!(clientId in changes)) {
+    var key = childKey + parentKey;
+    if (!(clientId in changes) || !(parentClientId in changes[clientId])){
       return;
     }
+    if(type){
+      return changes[clientId][parentClientId][key][type];
+    }
+    else{
+      //TODO(Igor) what if both present
+      return changes[clientId][parentClientId][key]["add"] || changes[clientId][parentClientId][key]["remove"];
+    }
+  },
 
-    return changes[clientId][key];
+  relationshipChangePairsFor: function(clientId){
+    var toReturn = [];
+    //TODO(Igor) What about the other side
+    var changesObject = this.relationshipChanges[clientId];
+    for (var objKey in changesObject){
+      if(changesObject.hasOwnProperty(objKey)){
+        for (var changeKey in changesObject[objKey]){
+          if(changesObject[objKey].hasOwnProperty(changeKey)){
+            toReturn.push(changesObject[objKey][changeKey]);
+          }
+        }
+      }
+    }
+    return toReturn;
   },
 
   relationshipChangesFor: function(clientId) {
-    return this.relationshipChanges[clientId];
+    var toReturn = [];
+    var relationshipPairs = this.relationshipChangePairsFor(clientId);
+    forEach(relationshipPairs, function(pair){
+      var addedChange = pair["add"];
+      var removedChange = pair["remove"];
+      if(addedChange){
+        toReturn.push(addedChange);
+      }
+      if(removedChange){
+        toReturn.push(removedChange);
+      }
+    });
+   return toReturn;
   },
-
   // ......................
   // . PER-TYPE ADAPTERS
   // ......................
@@ -2633,8 +2642,10 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
   // ..............................
   // . RECORD CHANGE NOTIFICATION .
   // ..............................
-  recordAttributeDidChange: function(record, attributeName, newValue, oldValue) {
-    var dirtySet = new Ember.OrderedSet(),
+
+  recordAttributeDidChange: function(reference, attributeName, newValue, oldValue) {
+    var record = this.recordForReference(reference),
+        dirtySet = new Ember.OrderedSet(),
         adapter = this.adapterForType(record.constructor);
 
     if (adapter.dirtyRecordsForAttributeChange) {
@@ -2652,6 +2663,9 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     if (adapter.dirtyRecordsForBelongsToChange) {
       adapter.dirtyRecordsForBelongsToChange(dirtySet, child, relationship);
     }
+
+    // adapterDidDirty is called by the RelationshipChange that created
+    // the dirtySet.
   },
 
   recordHasManyDidChange: function(dirtySet, parent, relationship) {
@@ -2660,6 +2674,9 @@ DS.Store = Ember.Object.extend(DS._Mappable, {
     if (adapter.dirtyRecordsForHasManyChange) {
       adapter.dirtyRecordsForHasManyChange(dirtySet, parent, relationship);
     }
+
+    // adapterDidDirty is called by the RelationshipChange that created
+    // the dirtySet.
   }
 });
 
@@ -2693,7 +2710,8 @@ DS.Store.reopenClass({
 
 
 (function() {
-var get = Ember.get, set = Ember.set, guidFor = Ember.guidFor;
+var get = Ember.get, set = Ember.set, guidFor = Ember.guidFor,
+    once = Ember.run.once, arrayMap = Ember.ArrayPolyfills.map;
 
 /**
   This file encapsulates the various states that a record can transition
@@ -2874,14 +2892,17 @@ var didChangeData = function(manager) {
   record.materializeData();
 };
 
-var setProperty = function(manager, context) {
-  var record = get(manager, 'record'),
-      store = get(record, 'store'),
-      key = context.key,
-      oldValue = context.oldValue,
-      newValue = context.value;
+var willSetProperty = function(manager, context) {
+  context.oldValue = get(get(manager, 'record'), context.name);
 
-  store.recordAttributeDidChange(record, key, newValue, oldValue);
+  var change = DS.AttributeChange.createChange(context);
+  get(manager, 'record')._changesToSync[context.attributeName] = change;
+};
+
+var didSetProperty = function(manager, context) {
+  var change = get(manager, 'record')._changesToSync[context.attributeName];
+  change.value = get(get(manager, 'record'), context.name);
+  change.sync();
 };
 
 // Whenever a property is set, recompute all dependent filters
@@ -2892,6 +2913,7 @@ var updateRecordArrays = function(manager) {
 
 DS.State = Ember.State.extend({
   isLoaded: stateProperty,
+  isReloading: stateProperty,
   isDirty: stateProperty,
   isSaving: stateProperty,
   isDeleted: stateProperty,
@@ -2972,7 +2994,8 @@ var DirtyState = DS.State.extend({
     },
 
     // EVENTS
-    setProperty: setProperty,
+    willSetProperty: willSetProperty,
+    didSetProperty: didSetProperty,
 
     becomeDirty: Ember.K,
 
@@ -2988,7 +3011,7 @@ var DirtyState = DS.State.extend({
         t.recordBecameClean(dirtyType, record);
       });
 
-      manager.transitionTo('loaded.saved');
+      manager.transitionTo('loaded.materializing');
     },
 
     becameInvalid: function(manager) {
@@ -3075,10 +3098,12 @@ var DirtyState = DS.State.extend({
       get(manager, 'record').clearRelationships();
     },
 
-    setProperty: function(manager, context) {
+    willSetProperty: willSetProperty,
+
+    didSetProperty: function(manager, context) {
       var record = get(manager, 'record'),
           errors = get(record, 'errors'),
-          key = context.key;
+          key = context.name;
 
       set(errors, key, null);
 
@@ -3086,7 +3111,7 @@ var DirtyState = DS.State.extend({
         manager.send('becameValid');
       }
 
-      setProperty(manager, context);
+      didSetProperty(manager, context);
     },
 
     becomeDirty: Ember.K,
@@ -3130,8 +3155,8 @@ createdState.states.uncommitted.reopen({
       t.recordIsMoving('created', record);
     });
 
-    manager.transitionTo('deleted.saved');
     record.clearRelationships();
+    manager.transitionTo('deleted.saved');
   }
 });
 
@@ -3159,6 +3184,7 @@ var states = {
   rootState: Ember.State.create({
     // FLAGS
     isLoaded: false,
+    isReloading: false,
     isDirty: false,
     isSaving: false,
     isDeleted: false,
@@ -3191,16 +3217,11 @@ var states = {
     // Usually, this process is asynchronous, using an
     // XHR to retrieve the data.
     loading: DS.State.create({
-      // TRANSITIONS
-      exit: function(manager) {
-        var record = get(manager, 'record');
-        record.trigger('didLoad');
-      },
-
       // EVENTS
-      loadedData: function(manager) {
-        didChangeData(manager);
-        manager.transitionTo('loaded');
+      loadedData: didChangeData,
+
+      materializingData: function(manager) {
+        manager.transitionTo('loaded.materializing.firstTime');
       }
     }),
 
@@ -3215,14 +3236,75 @@ var states = {
 
       // SUBSTATES
 
+      materializing: DS.State.create({
+        // FLAGS
+        isLoaded: false,
+
+        // EVENTS
+        willSetProperty: Ember.K,
+        didSetProperty: Ember.K,
+
+        didChangeData: didChangeData,
+
+        finishedMaterializing: function(manager) {
+          manager.transitionTo('loaded.saved');
+        },
+
+        // SUBSTATES
+        firstTime: DS.State.create({
+          exit: function(manager) {
+            var record = get(manager, 'record');
+
+            Ember.run.once(function() {
+              record.trigger('didLoad');
+            });
+          }
+        })
+      }),
+
+      reloading: DS.State.create({
+        // FLAGS
+        isReloading: true,
+
+        // TRANSITIONS
+        enter: function(manager) {
+          var record = get(manager, 'record'),
+              store = get(record, 'store');
+
+          store.reloadRecord(record);
+        },
+
+        exit: function(manager) {
+          var record = get(manager, 'record');
+
+          once(record, 'trigger', 'didReload');
+        },
+
+        // EVENTS
+        loadedData: didChangeData,
+
+        materializingData: function(manager) {
+          manager.transitionTo('loaded.materializing');
+        }
+      }),
+
       // If there are no local changes to a record, it remains
       // in the `saved` state.
       saved: DS.State.create({
-
         // EVENTS
-        setProperty: setProperty,
+        willSetProperty: willSetProperty,
+        didSetProperty: didSetProperty,
+
         didChangeData: didChangeData,
         loadedData: didChangeData,
+
+        reloadRecord: function(manager) {
+          manager.transitionTo('loaded.reloading');
+        },
+
+        materializingData: function(manager) {
+          manager.transitionTo('loaded.materializing');
+        },
 
         becomeDirty: function(manager) {
           manager.transitionTo('updated');
@@ -3338,7 +3420,7 @@ var states = {
             t.recordBecameClean('deleted', record);
           });
 
-          manager.transitionTo('loaded.saved');
+          manager.transitionTo('loaded.materializing');
         }
       }),
 
@@ -3415,7 +3497,19 @@ var states = {
 DS.StateManager = Ember.StateManager.extend({
   record: null,
   initialState: 'rootState',
-  states: states
+  states: states,
+  unhandledEvent: function(manager, originalEvent) {
+    var record = manager.get('record'),
+        contexts = [].slice.call(arguments, 2),
+        errorMessage;
+    errorMessage  = "Attempted to handle event `" + originalEvent + "` ";
+    errorMessage += "on " + record.toString() + " while in state ";
+    errorMessage += get(manager, 'currentState.path') + ". Called with ";
+    errorMessage += arrayMap.call(contexts, function(context){
+                      return Ember.inspect(context);
+                    }).join(', ');
+    throw new Ember.Error(errorMessage);
+  }
 });
 
 })();
@@ -3423,14 +3517,17 @@ DS.StateManager = Ember.StateManager.extend({
 
 
 (function() {
-var get = Ember.get, set = Ember.set, none = Ember.none;
+var LoadPromise = DS.LoadPromise; // system/mixins/load_promise
+
+var get = Ember.get, set = Ember.set, none = Ember.isNone, map = Ember.EnumerableUtils.map;
 
 var retrieveFromCurrentState = Ember.computed(function(key) {
   return get(get(this, 'stateManager.currentState'), key);
 }).property('stateManager.currentState');
 
-DS.Model = Ember.Object.extend(Ember.Evented, {
+DS.Model = Ember.Object.extend(Ember.Evented, LoadPromise, {
   isLoaded: retrieveFromCurrentState,
+  isReloading: retrieveFromCurrentState,
   isDirty: retrieveFromCurrentState,
   isSaving: retrieveFromCurrentState,
   isDeleted: retrieveFromCurrentState,
@@ -3439,6 +3536,7 @@ DS.Model = Ember.Object.extend(Ember.Evented, {
   isValid: retrieveFromCurrentState,
 
   clientId: null,
+  id: null,
   transaction: null,
   stateManager: null,
   errors: null,
@@ -3455,12 +3553,13 @@ DS.Model = Ember.Object.extend(Ember.Evented, {
     @param {Object} options
     @returns {Object} an object whose values are primitive JSON values only
   */
-  toData: function(options) {
+  serialize: function(options) {
     var store = get(this, 'store');
-    return store.toData(this, options);
+    return store.serialize(this, options);
   },
 
   didLoad: Ember.K,
+  didReload: Ember.K,
   didUpdate: Ember.K,
   didCreate: Ember.K,
   didDelete: Ember.K,
@@ -3476,10 +3575,11 @@ DS.Model = Ember.Object.extend(Ember.Evented, {
   }).property(),
 
   materializeData: function() {
-    this.setupData();
+    this.send('materializingData');
+
     get(this, 'store').materializeData(this);
 
-    this.suspendAssociationObservers(function() {
+    this.suspendRelationshipObservers(function() {
       this.notifyPropertyChange('data');
     });
   },
@@ -3487,16 +3587,19 @@ DS.Model = Ember.Object.extend(Ember.Evented, {
   _data: null,
 
   init: function() {
+    this._super();
+
     var stateManager = DS.StateManager.create({ record: this });
     set(this, 'stateManager', stateManager);
 
-    this.setup();
+    this._setup();
 
     stateManager.goToState('empty');
   },
 
-  setup: function() {
+  _setup: function() {
     this._relationshipChanges = {};
+    this._changesToSync = {};
   },
 
   send: function(name, context) {
@@ -3524,6 +3627,17 @@ DS.Model = Ember.Object.extend(Ember.Evented, {
     this.send('setProperty', { key: key, value: value, oldValue: oldValue });
   },
 
+  /**
+    Reload the record from the adapter.
+
+    This will only work if the record has already finished loading
+    and has not yet been modified (`isLoaded` but not `isDirty`,
+    or `isSaving`).
+  */
+  reload: function() {
+    this.send('reloadRecord');
+  },
+
   deleteRecord: function() {
     this.send('deleteRecord');
   },
@@ -3535,7 +3649,7 @@ DS.Model = Ember.Object.extend(Ember.Evented, {
   },
 
   clearRelationships: function() {
-    this.eachAssociation(function(name, relationship) {
+    this.eachRelationship(function(name, relationship) {
       if (relationship.kind === 'belongsTo') {
         set(this, name, null);
       } else if (relationship.kind === 'hasMany') {
@@ -3553,7 +3667,7 @@ DS.Model = Ember.Object.extend(Ember.Evented, {
 
   /**
     If the adapter did not return a hash in response to a commit,
-    merge the changed attributes and associations into the existing
+    merge the changed attributes and relationships into the existing
     saved data.
   */
   adapterDidCommit: function() {
@@ -3573,38 +3687,42 @@ DS.Model = Ember.Object.extend(Ember.Evented, {
   },
 
   dataDidChange: Ember.observer(function() {
-    var associations = get(this.constructor, 'associationsByName'),
-        hasMany = get(this, 'data').hasMany, store = get(this, 'store'),
-        idToClientId = store.idToClientId,
-        cachedValue;
+    var relationships = get(this.constructor, 'relationshipsByName');
 
     this.updateRecordArraysLater();
 
-    associations.forEach(function(name, association) {
-      if (association.kind === 'hasMany') {
-        cachedValue = this.cacheFor(name);
-
-        if (cachedValue) {
-          var key = name,
-              ids = hasMany[key] || [];
-
-          var clientIds;
-
-          clientIds = Ember.EnumerableUtils.map(ids, function(id) {
-            return store.clientIdForId(association.type, id);
-          });
-
-          set(cachedValue, 'content', Ember.A(clientIds));
-        }
+    relationships.forEach(function(name, relationship) {
+      if (relationship.kind === 'hasMany') {
+        this.hasManyDidChange(relationship.key);
       }
     }, this);
+
+    this.send('finishedMaterializing');
   }, 'data'),
+
+  hasManyDidChange: function(key) {
+    var cachedValue = this.cacheFor(key);
+
+    if (cachedValue) {
+      var type = get(this.constructor, 'relationshipsByName').get(key).type;
+      var store = get(this, 'store');
+      var ids = this._data.hasMany[key] || [];
+
+      var references = map(ids, function(id) {
+        // if it was already a reference, return the reference
+        if (typeof id === 'object') { return id; }
+        return store.referenceForId(type, id);
+      });
+
+      set(cachedValue, 'content', Ember.A(references));
+    }
+  },
 
   updateRecordArraysLater: function() {
     Ember.run.once(this, this.updateRecordArrays);
   },
 
-  setupData: function() {
+  setupData: function(prematerialized) {
     this._data = {
       attributes: {},
       belongsTo: {},
@@ -3635,12 +3753,16 @@ DS.Model = Ember.Object.extend(Ember.Evented, {
   },
 
   rollback: function() {
-    this.setup();
+    this._setup();
     this.send('becameClean');
 
-    this.suspendAssociationObservers(function() {
+    this.suspendRelationshipObservers(function() {
       this.notifyPropertyChange('data');
     });
+  },
+
+  toStringExtension: function() {
+    return get(this, 'id');
   },
 
   /**
@@ -3657,19 +3779,19 @@ DS.Model = Ember.Object.extend(Ember.Evented, {
     better infrastructure for suspending groups of observers, and if Array
     observation becomes more unified with regular observers.
   */
-  suspendAssociationObservers: function(callback, binding) {
-    var observers = get(this.constructor, 'associationNames').belongsTo;
+  suspendRelationshipObservers: function(callback, binding) {
+    var observers = get(this.constructor, 'relationshipNames').belongsTo;
     var self = this;
 
     try {
-      this._suspendedAssociations = true;
+      this._suspendedRelationships = true;
       Ember._suspendObservers(self, observers, null, 'belongsToDidChange', function() {
         Ember._suspendBeforeObservers(self, observers, null, 'belongsToWillChange', function() {
           callback.call(binding || self);
         });
       });
     } finally {
-      this._suspendedAssociations = false;
+      this._suspendedRelationships = false;
     }
   },
 
@@ -3695,31 +3817,9 @@ DS.Model = Ember.Object.extend(Ember.Evented, {
     this.updateRecordArraysLater();
   },
 
-  adapterDidUpdateHasMany: function(name) {
-    var cachedValue = this.cacheFor(name),
-        hasMany = get(this, 'data').hasMany,
-        store = get(this, 'store');
-
-    var associations = get(this.constructor, 'associationsByName'),
-        association = associations.get(name),
-        idToClientId = store.idToClientId;
-
-    if (cachedValue) {
-      var key = name,
-          ids = hasMany[key] || [];
-
-      var clientIds;
-
-      clientIds = Ember.EnumerableUtils.map(ids, function(id) {
-        return store.clientIdForId(association.type, id);
-      });
-
-      set(cachedValue, 'content', Ember.A(clientIds));
-      set(cachedValue, 'isLoaded', true);
-    }
-
-    this.updateRecordArraysLater();
-  },
+  _reference: Ember.computed(function() {
+    return get(this, 'store').referenceForClientId(get(this, 'clientId'));
+  }),
 
   adapterDidInvalidate: function(errors) {
     this.send('becameInvalid', errors);
@@ -3793,12 +3893,47 @@ DS.Model.reopenClass({
   })
 });
 
+var AttributeChange = DS.AttributeChange = function(options) {
+  this.reference = options.reference;
+  this.store = options.store;
+  this.name = options.name;
+  this.oldValue = options.oldValue;
+};
+
+AttributeChange.createChange = function(options) {
+  return new AttributeChange(options);
+};
+
+AttributeChange.prototype = {
+  sync: function() {
+    this.store.recordAttributeDidChange(this.reference, this.name, this.value, this.oldValue);
+
+    // TODO: Use this object in the commit process
+    this.destroy();
+  },
+
+  destroy: function() {
+    delete this.store.recordForReference(this.reference)._changesToSync[this.name];
+  }
+};
+
 DS.Model.reopen({
   eachAttribute: function(callback, binding) {
     get(this.constructor, 'attributes').forEach(function(name, meta) {
       callback.call(binding, name, meta);
     }, binding);
-  }
+  },
+
+  attributeWillChange: Ember.beforeObserver(function(record, key) {
+    var reference = get(record, '_reference'),
+        store = get(record, 'store');
+
+    record.send('willSetProperty', { reference: reference, store: store, name: key });
+  }),
+
+  attributeDidChange: Ember.observer(function(record, key) {
+    record.send('didSetProperty', { name: key });
+  })
 });
 
 function getAttr(record, options, key) {
@@ -3825,10 +3960,7 @@ DS.attr = function(type, options) {
     var data;
 
     if (arguments.length > 1) {
-      // TODO: If there is a cached oldValue, use it [tomhuda]
-      oldValue = get(this, 'data.attributes')[key];
-      Ember.assert("You may not set `id` as an attribute on your model. Please remove any lines that look like: `id: DS.attr('<type>')` from " + this.toString(), key !== 'id');
-      this.setProperty(key, value, oldValue);
+      Ember.assert("You may not set `id` as an attribute on your model. Please remove any lines that look like: `id: DS.attr('<type>')` from " + this.constructor.toString(), key !== 'id');
     } else {
       value = getAttr(this, options, key);
     }
@@ -3853,14 +3985,14 @@ DS.attr = function(type, options) {
 
 (function() {
 var get = Ember.get, set = Ember.set,
-    none = Ember.none;
+    none = Ember.isNone;
 
 DS.belongsTo = function(type, options) {
   Ember.assert("The first argument DS.belongsTo must be a model type or string, like DS.belongsTo(App.Person)", !!type && (typeof type === 'string' || DS.Model.detect(type)));
 
   options = options || {};
 
-  var meta = { type: type, isAssociation: true, options: options, kind: 'belongsTo' };
+  var meta = { type: type, isRelationship: true, options: options, kind: 'belongsTo' };
 
   return Ember.computed(function(key, value) {
     if (arguments.length === 2) {
@@ -3871,21 +4003,25 @@ DS.belongsTo = function(type, options) {
         store = get(this, 'store'), id;
 
     if (typeof type === 'string') {
-      type = get(this, type, false) || get(window, type);
+      type = get(this, type, false) || get(Ember.lookup, type);
     }
 
     id = data[key];
-    return id ? store.find(type, id) : null;
+
+    if(!id) {
+      return null;
+    } else if (typeof id === 'object') {
+      return store.findByClientId(type, id.clientId);
+    } else {
+      return store.find(type, id);
+    }
   }).property('data').meta(meta);
 };
 
 /**
   These observers observe all `belongsTo` relationships on the record. See
-  `associations/ext` to see how these observers get their dependencies.
+  `relationships/ext` to see how these observers get their dependencies.
 
-  The observers use `removeFromContent` and `addToContent` to avoid
-  going through the public Enumerable API that would try to set the
-  inverse (again) and trigger an infinite loop.
 */
 
 DS.Model.reopen({
@@ -3896,11 +4032,10 @@ DS.Model.reopen({
 
       var childId = get(record, 'clientId'),
           store = get(record, 'store');
-
-      var change = DS.OneToManyChange.forChildAndParent(childId, store, { belongsToName: key });
-
-      if (change.oldParent === undefined) {
-        change.oldParent = oldParent ? get(oldParent, 'clientId') : null;
+      if (oldParent){
+        var change = DS.RelationshipChange.createChange(childId, get(oldParent, 'clientId'), store, { key: key, kind:"belongsTo", changeType: "remove" });
+        change.sync();
+        this._changesToSync[key] = change;
       }
     }
   }),
@@ -3908,12 +4043,18 @@ DS.Model.reopen({
   /** @private */
   belongsToDidChange: Ember.immediateObserver(function(record, key) {
     if (get(record, 'isLoaded')) {
-      var change = get(record, 'store').relationshipChangeFor(get(record, 'clientId'), key),
-          newParent = get(record, key);
-
-      change.newParent = newParent ? get(newParent, 'clientId') : null;
-      change.sync();
+      var newParent = get(record, key);
+      if(newParent){
+        var childId = get(record, 'clientId'),
+            store = get(record, 'store');
+        var change = DS.RelationshipChange.createChange(childId, get(newParent, 'clientId'), store, { key: key, kind:"belongsTo", changeType: "add" });
+        change.sync();
+        if(this._changesToSync[key]){
+          DS.OneToManyChange.ensureSameTransaction([change, this._changesToSync[key]], store);
+        }
+      }
     }
+    delete this._changesToSync[key];
   })
 });
 
@@ -3923,32 +4064,32 @@ DS.Model.reopen({
 
 (function() {
 var get = Ember.get, set = Ember.set;
-var hasAssociation = function(type, options) {
+var hasRelationship = function(type, options) {
   options = options || {};
 
-  var meta = { type: type, isAssociation: true, options: options, kind: 'hasMany' };
+  var meta = { type: type, isRelationship: true, options: options, kind: 'hasMany' };
 
   return Ember.computed(function(key, value) {
     var data = get(this, 'data').hasMany,
         store = get(this, 'store'),
-        ids, association;
+        ids, relationship;
 
     if (typeof type === 'string') {
-      type = get(this, type, false) || get(window, type);
+      type = get(this, type, false) || get(Ember.lookup, type);
     }
 
     ids = data[key];
-    association = store.findMany(type, ids || [], this, meta);
-    set(association, 'owner', this);
-    set(association, 'name', key);
+    relationship = store.findMany(type, ids || [], this, meta);
+    set(relationship, 'owner', this);
+    set(relationship, 'name', key);
 
-    return association;
+    return relationship;
   }).property().meta(meta);
 };
 
 DS.hasMany = function(type, options) {
   Ember.assert("The type passed to DS.hasMany must be defined", !!type);
-  return hasAssociation(type, options);
+  return hasRelationship(type, options);
 };
 
 })();
@@ -3958,55 +4099,172 @@ DS.hasMany = function(type, options) {
 (function() {
 var get = Ember.get, set = Ember.set;
 
+/**
+  @private
+
+  This file defines several extensions to the base `DS.Model` class that
+  add support for one-to-many relationships.
+*/
+
 DS.Model.reopen({
+  // This Ember.js hook allows an object to be notified when a property
+  // is defined.
+  //
+  // In this case, we use it to be notified when an Ember Data user defines a
+  // belongs-to relationship. In that case, we need to set up observers for
+  // each one, allowing us to track relationship changes and automatically
+  // reflect changes in the inverse has-many array.
+  //
+  // This hook passes the class being set up, as well as the key and value
+  // being defined. So, for example, when the user does this:
+  //
+  //   DS.Model.extend({
+  //     parent: DS.belongsTo(App.User)
+  //   });
+  //
+  // This hook would be called with "parent" as the key and the computed
+  // property returned by `DS.belongsTo` as the value.
   didDefineProperty: function(proto, key, value) {
+    // Check if the value being set is a computed property.
     if (value instanceof Ember.Descriptor) {
+
+      // If it is, get the metadata for the relationship. This is
+      // populated by the `DS.belongsTo` helper when it is creating
+      // the computed property.
       var meta = value.meta();
 
-      if (meta.isAssociation && meta.kind === 'belongsTo') {
+      if (meta.isRelationship && meta.kind === 'belongsTo') {
         Ember.addObserver(proto, key, null, 'belongsToDidChange');
         Ember.addBeforeObserver(proto, key, null, 'belongsToWillChange');
       }
+
+      if (meta.isAttribute) {
+        Ember.addObserver(proto, key, null, 'attributeDidChange');
+        Ember.addBeforeObserver(proto, key, null, 'attributeWillChange');
+      }
+
+      meta.parentType = proto.constructor;
     }
   }
 });
 
+/**
+  These DS.Model extensions add class methods that provide relationship
+  introspection abilities about relationships.
+
+  A note about the computed properties contained here:
+
+  **These properties are effectively sealed once called for the first time.**
+  To avoid repeatedly doing expensive iteration over a model's fields, these
+  values are computed once and then cached for the remainder of the runtime of
+  your application.
+
+  If your application needs to modify a class after its initial definition
+  (for example, using `reopen()` to add additional attributes), make sure you
+  do it before using your model with the store, which uses these properties
+  extensively.
+*/
+
 DS.Model.reopenClass({
-  typeForAssociation: function(name) {
-    var association = get(this, 'associationsByName').get(name);
-    return association && association.type;
+  /**
+    For a given relationship name, returns the model type of the relationship.
+
+    For example, if you define a model like this:
+
+        App.Post = DS.Model.extend({
+          comments: DS.hasMany(App.Comment)
+        });
+
+    Calling `App.Post.typeForRelationship('comments')` will return `App.Comment`.
+
+    @param {String} name the name of the relationship
+    @return {subclass of DS.Model} the type of the relationship, or undefined
+  */
+  typeForRelationship: function(name) {
+    var relationship = get(this, 'relationshipsByName').get(name);
+    return relationship && relationship.type;
   },
 
-  associations: Ember.computed(function() {
-    var map = Ember.Map.create();
+  /**
+    The model's relationships as a map, keyed on the type of the
+    relationship. The value of each entry is an array containing a descriptor
+    for each relationship with that type, describing the name of the relationship
+    as well as the type.
 
+    For example, given the following model definition:
+
+        App.Blog = DS.Model.extend({
+          users: DS.hasMany(App.User),
+          owner: DS.belongsTo(App.User),
+
+          posts: DS.hasMany(App.Post)
+        });
+
+    This computed property would return a map describing these
+    relationships, like this:
+
+        var relationships = Ember.get(App.Blog, 'relationships');
+        associatons.get(App.User);
+        //=> [ { name: 'users', kind: 'hasMany' },
+        //     { name: 'owner', kind: 'belongsTo' } ]
+        relationships.get(App.Post);
+        //=> [ { name: 'posts', kind: 'hasMany' } ]
+
+    @type Ember.Map
+    @readOnly
+  */
+  relationships: Ember.computed(function() {
+    var map = new Ember.MapWithDefault({
+      defaultValue: function() { return []; }
+    });
+
+    // Loop through each computed property on the class
     this.eachComputedProperty(function(name, meta) {
-      if (meta.isAssociation) {
-        var type = meta.type,
-            typeList = map.get(type);
 
-        if (typeof type === 'string') {
-          type = get(this, type, false) || get(window, type);
-          meta.type = type;
+      // If the computed property is a relationship, add
+      // it to the map.
+      if (meta.isRelationship) {
+        if (typeof meta.type === 'string') {
+          meta.type = Ember.get(Ember.lookup, meta.type);
         }
 
-        if (!typeList) {
-          typeList = [];
-          map.set(type, typeList);
-        }
+        var relationshipsForType = map.get(meta.type);
 
-        typeList.push({ name: name, kind: meta.kind });
+        relationshipsForType.push({ name: name, kind: meta.kind });
       }
     });
 
     return map;
   }),
 
-  associationNames: Ember.computed(function() {
+  /**
+    A hash containing lists of the model's relationships, grouped
+    by the relationship kind. For example, given a model with this
+    definition:
+
+        App.Blog = DS.Model.extend({
+          users: DS.hasMany(App.User),
+          owner: DS.belongsTo(App.User),
+
+          posts: DS.hasMany(App.Post)
+        });
+
+    This property would contain the following:
+
+       var relationshipNames = Ember.get(App.Blog, 'relationshipNames');
+       relationshipNames.hasMany;
+       //=> ['users', 'posts']
+       relationshipNames.belongsTo;
+       //=> ['owner']
+
+    @type Object
+    @readOnly
+  */
+  relationshipNames: Ember.computed(function() {
     var names = { hasMany: [], belongsTo: [] };
 
     this.eachComputedProperty(function(name, meta) {
-      if (meta.isAssociation) {
+      if (meta.isRelationship) {
         names[meta.kind].push(name);
       }
     });
@@ -4014,16 +4272,41 @@ DS.Model.reopenClass({
     return names;
   }),
 
-  associationsByName: Ember.computed(function() {
+  /**
+    A map whose keys are the relationships of a model and whose values are
+    relationship descriptors.
+
+    For example, given a model with this
+    definition:
+
+        App.Blog = DS.Model.extend({
+          users: DS.hasMany(App.User),
+          owner: DS.belongsTo(App.User),
+
+          posts: DS.hasMany(App.Post)
+        });
+
+    This property would contain the following:
+
+       var relationshipsByName = Ember.get(App.Blog, 'relationshipsByName');
+       relationshipsByName.get('users');
+       //=> { key: 'users', kind: 'hasMany', type: App.User }
+       relationshipsByName.get('owner');
+       //=> { key: 'owner', kind: 'belongsTo', type: App.User }
+
+    @type Ember.Map
+    @readOnly
+  */
+  relationshipsByName: Ember.computed(function() {
     var map = Ember.Map.create(), type;
 
     this.eachComputedProperty(function(name, meta) {
-      if (meta.isAssociation) {
+      if (meta.isRelationship) {
         meta.key = name;
         type = meta.type;
 
         if (typeof type === 'string') {
-          type = get(this, type, false) || get(window, type);
+          type = get(this, type, false) || get(Ember.lookup, type);
           meta.type = type;
         }
 
@@ -4034,11 +4317,41 @@ DS.Model.reopenClass({
     return map;
   }),
 
+  /**
+    A map whose keys are the fields of the model and whose values are strings
+    describing the kind of the field. A model's fields are the union of all of its
+    attributes and relationships.
+
+    For example:
+
+        App.Blog = DS.Model.extend({
+          users: DS.hasMany(App.User),
+          owner: DS.belongsTo(App.User),
+
+          posts: DS.hasMany(App.Post),
+
+          title: DS.attr('string')
+        });
+
+        var fields = Ember.get(App.Blog, 'fields');
+        fields.forEach(function(field, kind) {
+          console.log(field, kind);
+        });
+
+        // prints:
+        // users, hasMany
+        // owner, belongsTo
+        // posts, hasMany
+        // title, attribute
+
+    @type Ember.Map
+    @readOnly
+  */
   fields: Ember.computed(function() {
     var map = Ember.Map.create(), type;
 
     this.eachComputedProperty(function(name, meta) {
-      if (meta.isAssociation) {
+      if (meta.isRelationship) {
         map.set(name, meta.kind);
       } else if (meta.isAttribute) {
         map.set(name, 'attribute');
@@ -4048,43 +4361,97 @@ DS.Model.reopenClass({
     return map;
   }),
 
-  eachAssociation: function(callback, binding) {
-    get(this, 'associationsByName').forEach(function(name, association) {
-      callback.call(binding, name, association);
+  /**
+    Given a callback, iterates over each of the relationships in the model,
+    invoking the callback with the name of each relationship and its relationship
+    descriptor.
+
+    @param {Function} callback the callback to invoke
+    @param {any} binding the value to which the callback's `this` should be bound
+  */
+  eachRelationship: function(callback, binding) {
+    get(this, 'relationshipsByName').forEach(function(name, relationship) {
+      callback.call(binding, name, relationship);
     });
   }
 });
 
 DS.Model.reopen({
-  eachAssociation: function(callback, binding) {
-    this.constructor.eachAssociation(callback, binding);
+  /**
+    Given a callback, iterates over each of the relationships in the model,
+    invoking the callback with the name of each relationship and its relationship
+    descriptor.
+
+    @param {Function} callback the callback to invoke
+    @param {any} binding the value to which the callback's `this` should be bound
+  */
+  eachRelationship: function(callback, binding) {
+    this.constructor.eachRelationship(callback, binding);
   }
 });
 
-DS.inverseNameFor = function(modelType, inverseModelType, inverseAssociationKind) {
-  var associationMap = get(modelType, 'associations'),
-      possibleAssociations = associationMap.get(inverseModelType),
+/**
+  @private
+
+  Helper method to look up the name of the inverse of a relationship.
+
+  In a has-many relationship, there are always two sides: the `belongsTo` side
+  and the `hasMany` side. When one side changes, the other side should be updated
+  automatically.
+
+  Given a model, the model of the inverse, and the kind of the relationship, this
+  helper returns the name of the relationship on the inverse.
+
+  For example, imagine the following two associated models:
+
+      App.Post = DS.Model.extend({
+        comments: DS.hasMany('App.Comment')
+      });
+
+      App.Comment = DS.Model.extend({
+        post: DS.belongsTo('App.Post')
+      });
+
+  If the `post` property of a `Comment` was modified, Ember Data would invoke
+  this helper like this:
+
+      DS._inverseNameFor(App.Comment, App.Post, 'hasMany');
+      //=> 'comments'
+
+  Ember Data uses the name of the relationship returned to reflect the changed
+  relationship on the other side.
+*/
+DS._inverseRelationshipFor = function(modelType, inverseModelType) {
+  var relationshipMap = get(modelType, 'relationships'),
+      possibleRelationships = relationshipMap.get(inverseModelType),
       possible, actual, oldValue;
 
-  if (!possibleAssociations) { return; }
-
-  for (var i = 0, l = possibleAssociations.length; i < l; i++) {
-    possible = possibleAssociations[i];
-
-    if (possible.kind === inverseAssociationKind) {
-      actual = possible;
-      break;
-    }
-  }
-
-  if (actual) { return actual.name; }
+  if (!possibleRelationships) { return; }
+  if (possibleRelationships.length > 1) { return; }
+  return possibleRelationships[0];
 };
 
-DS.inverseTypeFor = function(modelType, associationName) {
-  var associations = get(modelType, 'associationsByName'),
-      association = associations.get(associationName);
+/**
+  @private
 
-  if (association) { return association.type; }
+  Given a model and a relationship name, returns the model type of
+  the named relationship.
+
+      App.Post = DS.Model.extend({
+        comments: DS.hasMany('App.Comment')
+      });
+
+      DS._inverseTypeFor(App.Post, 'comments');
+      //=> App.Comment
+  @param {DS.Model class} modelType
+  @param {String} relationshipName
+  @return {DS.Model class}
+*/
+DS._inverseTypeFor = function(modelType, relationshipName) {
+  var relationships = get(modelType, 'relationshipsByName'),
+      relationship = relationships.get(relationshipName);
+
+  if (relationship) { return relationship.type; }
 };
 
 })();
@@ -4093,55 +4460,287 @@ DS.inverseTypeFor = function(modelType, associationName) {
 
 (function() {
 var get = Ember.get, set = Ember.set;
+var forEach = Ember.EnumerableUtils.forEach;
 
-DS.OneToManyChange = function(options) {
-  this.oldParent = options.oldParent;
-  this.child = options.child;
-  this.belongsToName = options.belongsToName;
+DS.RelationshipChange = function(options) {
+  this.firstRecordClientId = options.firstRecordClientId;
+  this.firstRecordKind = options.firstRecordKind;
+  this.firstRecordName = options.firstRecordName;
+  this.secondRecordClientId = options.secondRecordClientId;
+  this.secondRecordKind = options.secondRecordKind;
+  this.secondRecordName = options.secondRecordName;
   this.store = options.store;
   this.committed = {};
-  this.awaiting = 0;
+  this.changeType = options.changeType;
+};
+
+DS.RelationshipChangeAdd = function(options){
+  DS.RelationshipChange.call(this, options);
+};
+
+DS.RelationshipChangeRemove = function(options){
+  DS.RelationshipChange.call(this, options);
 };
 
 /** @private */
-DS.OneToManyChange.create = function(options) {
-  return new DS.OneToManyChange(options);
+DS.RelationshipChange.create = function(options) {
+  return new DS.RelationshipChange(options);
 };
 
 /** @private */
-DS.OneToManyChange.forChildAndParent = function(childClientId, store, options) {
+DS.RelationshipChangeAdd.create = function(options) {
+  return new DS.RelationshipChangeAdd(options);
+};
+
+/** @private */
+DS.RelationshipChangeRemove.create = function(options) {
+  return new DS.RelationshipChangeRemove(options);
+};
+
+DS.OneToManyChange = {};
+DS.OneToNoneChange = {};
+DS.ManyToNoneChange = {};
+DS.OneToOneChange = {};
+DS.ManyToManyChange = {};
+
+DS.RelationshipChange._createChange = function(options){
+  if(options.changeType === "add"){
+    return DS.RelationshipChangeAdd.create(options);
+  }
+  if(options.changeType === "remove"){
+    return DS.RelationshipChangeRemove.create(options);
+  }
+};
+
+
+DS.RelationshipChange.determineRelationshipType = function(recordType, knownSide){
+  var knownKey = knownSide.key, key, type, otherContainerType,assoc;
+  var knownContainerType = knownSide.kind;
+  var options = recordType.metaForProperty(knownKey).options;
+  var otherType = DS._inverseTypeFor(recordType, knownKey);
+    
+  if(options.inverse){
+    key = options.inverse;
+    otherContainerType = get(otherType, 'relationshipsByName').get(key).kind; 
+  } 
+  else if(assoc = DS._inverseRelationshipFor(otherType, recordType)){
+    key = assoc.name;
+    otherContainerType = assoc.kind;
+  } 
+  if(!key){
+    return knownContainerType === "belongsTo" ? "oneToNone" : "manyToNone";
+  }
+  else{
+    if(otherContainerType === "belongsTo"){
+      return knownContainerType === "belongsTo" ? "oneToOne" : "manyToOne";
+    }
+    else{
+      return knownContainerType === "belongsTo" ? "oneToMany" : "manyToMany";
+    }
+  } 
+ 
+};
+
+DS.RelationshipChange.createChange = function(firstRecordClientId, secondRecordClientId, store, options){
+  // Get the type of the child based on the child's client ID
+  var firstRecordType = store.typeForClientId(firstRecordClientId), key, changeType;
+  changeType = DS.RelationshipChange.determineRelationshipType(firstRecordType, options);
+  if (changeType === "oneToMany"){
+    return DS.OneToManyChange.createChange(firstRecordClientId, secondRecordClientId, store, options); 
+  }
+  else if (changeType === "manyToOne"){
+    return DS.OneToManyChange.createChange(secondRecordClientId, firstRecordClientId, store, options); 
+  }
+  else if (changeType === "oneToNone"){
+    return DS.OneToNoneChange.createChange(firstRecordClientId, "", store, options); 
+  }
+  else if (changeType === "manyToNone"){
+    return DS.ManyToNoneChange.createChange(firstRecordClientId, "", store, options); 
+  }
+  else if (changeType === "oneToOne"){
+    return DS.OneToOneChange.createChange(firstRecordClientId, secondRecordClientId, store, options); 
+  }
+  else if (changeType === "manyToMany"){
+    return DS.ManyToManyChange.createChange(firstRecordClientId, secondRecordClientId, store, options); 
+  }
+};
+
+/** @private */
+DS.OneToNoneChange.createChange = function(childClientId, parentClientId, store, options) {
+  var key = options.key;
+  var change = DS.RelationshipChange._createChange({
+      firstRecordClientId: childClientId,
+      store: store,
+      changeType: options.changeType,
+      firstRecordName: key,
+      firstRecordKind: "belongsTo"
+  });
+
+  store.addRelationshipChangeFor(childClientId, key, parentClientId, null, change);
+
+  return change;
+};  
+
+/** @private */
+DS.ManyToNoneChange.createChange = function(childClientId, parentClientId, store, options) {
+  var key = options.key;
+  var change = DS.RelationshipChange._createChange({
+      secondRecordClientId: childClientId,
+      store: store,
+      changeType: options.changeType,
+      secondRecordName: options.key,
+      secondRecordKind: "hasMany"
+  });
+
+  store.addRelationshipChangeFor(childClientId, key, parentClientId, null, change);
+  return change;
+};  
+
+
+/** @private */
+DS.ManyToManyChange.createChange = function(childClientId, parentClientId, store, options) {
   // Get the type of the child based on the child's client ID
   var childType = store.typeForClientId(childClientId), key;
+  
+  // If the name of the belongsTo side of the relationship is specified,
+  // use that
+  // If the type of the parent is specified, look it up on the child's type
+  // definition.
+  key = options.key;
 
+  var change = DS.RelationshipChange._createChange({
+      firstRecordClientId: childClientId,
+      secondRecordClientId: parentClientId,
+      firstRecordKind: "hasMany",
+      secondRecordKind: "hasMany",
+      store: store,
+      changeType: options.changeType,
+      firstRecordName:  key
+  });
+
+  store.addRelationshipChangeFor(childClientId, key, parentClientId, null, change);
+
+
+  return change;
+};
+
+/** @private */
+DS.OneToOneChange.createChange = function(childClientId, parentClientId, store, options) {
+  // Get the type of the child based on the child's client ID
+  var childType = store.typeForClientId(childClientId), key;
+  
   // If the name of the belongsTo side of the relationship is specified,
   // use that
   // If the type of the parent is specified, look it up on the child's type
   // definition.
   if (options.parentType) {
-    key = inverseBelongsToName(options.parentType, childType, options.hasManyName);
-  } else if (options.belongsToName) {
-    key = options.belongsToName;
+    key = inverseBelongsToName(options.parentType, childType, options.key);
+    //DS.OneToOneChange.maintainInvariant( options, store, childClientId, key );
+  } else if (options.key) {
+    key = options.key;
   } else {
     Ember.assert("You must pass either a parentType or belongsToName option to OneToManyChange.forChildAndParent", false);
   }
 
-  var change = store.relationshipChangeFor(childClientId, key);
+  var change = DS.RelationshipChange._createChange({
+      firstRecordClientId: childClientId,
+      secondRecordClientId: parentClientId,
+      firstRecordKind: "belongsTo",
+      secondRecordKind: "belongsTo",
+      store: store,
+      changeType: options.changeType,
+      firstRecordName:  key
+  });
 
-  if (!change) {
-    change = DS.OneToManyChange.create({
-      child: childClientId,
-      store: store
-    });
+  store.addRelationshipChangeFor(childClientId, key, parentClientId, null, change);
 
-    store.addRelationshipChangeFor(childClientId, key, change);
-  }
-
-  change.belongsToName = key;
 
   return change;
 };
 
-DS.OneToManyChange.prototype = {
+DS.OneToOneChange.maintainInvariant = function(options, store, childClientId, key){
+  if (options.changeType === "add" && store.recordIsMaterialized(childClientId)) {
+    var child = store.findByClientId(null, childClientId);
+    var oldParent = get(child, key);
+    if (oldParent){
+      var correspondingChange = DS.OneToOneChange.createChange(childClientId, oldParent.get('clientId'), store, {
+          parentType: options.parentType,
+          hasManyName: options.hasManyName,
+          changeType: "remove",
+          key: options.key
+        });
+      store.addRelationshipChangeFor(childClientId, key, options.parentClientId , null, correspondingChange);
+     correspondingChange.sync();
+    }
+  }
+};
+
+/** @private */
+DS.OneToManyChange.createChange = function(childClientId, parentClientId, store, options) {
+  // Get the type of the child based on the child's client ID
+  var childType = store.typeForClientId(childClientId), key;
+  
+  // If the name of the belongsTo side of the relationship is specified,
+  // use that
+  // If the type of the parent is specified, look it up on the child's type
+  // definition.
+  if (options.parentType) {
+    key = inverseBelongsToName(options.parentType, childType, options.key);
+    DS.OneToManyChange.maintainInvariant( options, store, childClientId, key );
+  } else if (options.key) {
+    key = options.key;
+  } else {
+    Ember.assert("You must pass either a parentType or belongsToName option to OneToManyChange.forChildAndParent", false);
+  }
+
+  var change = DS.RelationshipChange._createChange({
+      firstRecordClientId: childClientId,
+      secondRecordClientId: parentClientId,
+      firstRecordKind: "belongsTo",
+      secondRecordKind: "hasMany",
+      store: store,
+      changeType: options.changeType,
+      firstRecordName:  key
+  });
+
+  store.addRelationshipChangeFor(childClientId, key, parentClientId, null, change);
+
+
+  return change;
+};
+
+
+DS.OneToManyChange.maintainInvariant = function(options, store, childClientId, key){
+  if (options.changeType === "add" && store.recordIsMaterialized(childClientId)) {
+    var child = store.findByClientId(null, childClientId);
+    var oldParent = get(child, key);
+    if (oldParent){
+      var correspondingChange = DS.OneToManyChange.createChange(childClientId, oldParent.get('clientId'), store, {
+          parentType: options.parentType,
+          hasManyName: options.hasManyName,
+          changeType: "remove",
+          key: options.key
+        });
+      store.addRelationshipChangeFor(childClientId, key, options.parentClientId , null, correspondingChange);
+     correspondingChange.sync();
+    }
+  }
+};
+
+DS.OneToManyChange.ensureSameTransaction = function(changes, store){
+  var records = Ember.A();
+  forEach(changes, function(change){
+    records.addObject(change.getSecondRecord());
+    records.addObject(change.getFirstRecord());
+  });
+  var transaction = store.ensureSameTransaction(records);
+  forEach(changes, function(change){
+    change.transaction = transaction;
+ });
+};
+
+DS.RelationshipChange.prototype = {
+
   /**
     Get the child type and ID, if available.
 
@@ -4151,40 +4750,17 @@ DS.OneToManyChange.prototype = {
     return this.getTypeAndIdFor(this.child);
   },
 
-  /**
-    Get the old parent type and ID, if available.
-
-    @returns {Array} an array of type and ID
-  */
-  getOldParentTypeAndId: function() {
-    return this.getTypeAndIdFor(this.oldParent);
-  },
-
-  /**
-    Get the new parent type and ID, if available.
-
-    @returns {Array} an array of type and ID
-  */
-  getNewParentTypeAndId: function() {
-    return this.getTypeAndIdFor(this.newParent);
-  },
-
-  /**
-    Get the name of the relationship on the hasMany side.
-
-    @returns {String}
-  */
-  getHasManyName: function() {
-    var name = this.hasManyName, store = this.store, parent;
+  getSecondRecordName: function() {
+    var name = this.secondRecordName, store = this.store, parent;
 
     if (!name) {
-      parent = this.oldParent || this.newParent;
+      parent = this.secondRecordClientId;
       if (!parent) { return; }
 
-      var childType = store.typeForClientId(this.child);
-      var inverseType = DS.inverseTypeFor(childType, this.belongsToName);
-      name = inverseHasManyName(inverseType, childType, this.belongsToName);
-      this.hasManyName = name;
+      var childType = store.typeForClientId(this.firstRecordClientId);
+      var inverseType = DS._inverseTypeFor(childType, this.firstRecordName);
+      name = inverseHasManyName(inverseType, childType, this.firstRecordName);
+      this.secondRecordName = name;
     }
 
     return name;
@@ -4195,18 +4771,19 @@ DS.OneToManyChange.prototype = {
 
     @returns {String}
   */
-  getBelongsToName: function() {
-    var name = this.belongsToName, store = this.store, parent;
+  getFirstRecordName: function() {
+    var name = this.firstRecordName, store = this.store, parent;
 
     if (!name) {
-      parent = this.oldParent || this.newParent;
+      parent = this.secondRecordClientId;
       if (!parent) { return; }
 
-      var childType = store.typeForClientId(this.child);
+      var childType = store.typeForClientId(this.firstRecordClientId);
       var parentType = store.typeForClientId(parent);
-      name = DS.inverseNameFor(childType, parentType, 'belongsTo', this.hasManyName);
+      if (!(childType && parentType)) { return; }
+      name = DS._inverseRelationshipFor(childType, parentType).name;
 
-      this.belongsToName = name;
+      this.firstRecordName = name;
     }
 
     return name;
@@ -4226,13 +4803,13 @@ DS.OneToManyChange.prototype = {
 
   /** @private */
   destroy: function() {
-    var childClientId = this.child,
-        belongsToName = this.getBelongsToName(),
-        hasManyName = this.getHasManyName(),
+    var childClientId = this.firstRecordClientId,
+        belongsToName = this.getFirstRecordName(),
+        hasManyName = this.getSecondRecordName(),
         store = this.store,
         child, oldParent, newParent, lastParent, transaction;
 
-    store.removeRelationshipChangeFor(childClientId, belongsToName);
+    store.removeRelationshipChangeFor(childClientId, belongsToName, this.secondRecordClientId, hasManyName, this.changeType);
 
     if (transaction = this.transaction) {
       transaction.relationshipBecameClean(this);
@@ -4251,24 +4828,13 @@ DS.OneToManyChange.prototype = {
     }
   },
 
-  /** @private */
-  getChild: function() {
-    return this.getByClientId(this.child);
+  getSecondRecord: function(){
+    return this.getByClientId(this.secondRecordClientId);
   },
 
   /** @private */
-  getOldParent: function() {
-    return this.getByClientId(this.oldParent);
-  },
-
-  /** @private */
-  getNewParent: function() {
-    return this.getByClientId(this.newParent);
-  },
-
-  /** @private */
-  getLastParent: function() {
-    return this.getByClientId(this.lastParent);
+  getFirstRecord: function() {
+    return this.getByClientId(this.firstRecordClientId);
   },
 
   /**
@@ -4279,176 +4845,143 @@ DS.OneToManyChange.prototype = {
     default transaction, and the rest are in a different transaction, move
     them all into that transaction.
   */
-  ensureSameTransaction: function(child, oldParent, newParent, hasManyName, belongsToName) {
-    var transactions = Ember.A();
+  ensureSameTransaction: function() {
+    var child = this.getFirstRecord(),
+      parentRecord = this.getSecondRecord();
 
-    if (child)     { transactions.pushObject(get(child, 'transaction')); }
-    if (oldParent) { transactions.pushObject(get(oldParent, 'transaction')); }
-    if (newParent) { transactions.pushObject(get(newParent, 'transaction')); }
-
-    var transaction = transactions.reduce(function(prev, t) {
-      if (!get(t, 'isDefault')) {
-        if (prev === null) { return t; }
-        Ember.assert("All records in a changed relationship must be in the same transaction. You tried to change the relationship between records when one is in " + t + " and the other is in " + prev, t === prev);
-      }
-
-      return prev;
-    }, null);
-
-    if (transaction) {
-      transaction.add(child);
-      if (oldParent) { transaction.add(oldParent); }
-      if (newParent) { transaction.add(newParent); }
-    } else {
-      transaction = transactions.objectAt(0);
-    }
+    var transaction = this.store.ensureSameTransaction([child, parentRecord]);
 
     this.transaction = transaction;
     return transaction;
   },
 
-  /** @private */
-  sync: function() {
-    var oldParentClientId = this.oldParent,
-        newParentClientId = this.newParent,
-        hasManyName = this.getHasManyName(),
-        belongsToName = this.getBelongsToName(),
-        child = this.getChild(),
-        oldParent, newParent;
-
-    //Ember.assert("You specified a hasMany (" + hasManyName + ") on " + (!belongsToName && (newParent || oldParent || this.lastParent).constructor) + " but did not specify an inverse belongsTo on " + child.constructor, belongsToName);
-
-    // This code path is reached if a child record was added to a new ManyArray
-    // without being removed from its old ManyArray. Below, this method will
-    // ensure (via `removeObject`) that the record is no longer in the old
-    // ManyArray.
-    if (oldParentClientId === undefined) {
-      // Since the child was added to a ManyArray, we know it was materialized.
-      oldParent = get(child, belongsToName);
-
-      if (oldParent) {
-        this.oldParent = get(oldParent, 'clientId');
-      } else {
-        this.oldParent = null;
-      }
-    } else {
-      oldParent = this.getOldParent();
-    }
-
-    // Coalesce changes from A to B and back to A.
-    if (oldParentClientId === newParentClientId) {
-      // If we have gone from oldParent to newParent and back to oldParent,
-      // there must be a materialized child.
-
-      // If our lastParent clientId is not null, there will always be a
-      // materialized lastParent.
-      var lastParent = this.getLastParent();
-      if (lastParent) {
-        lastParent.suspendAssociationObservers(function() {
-          get(lastParent, hasManyName).removeObject(child);
-        });
-      }
-
-      // Don't do anything if the belongsTo is going from null back to null
-      if (oldParent) {
-        get(oldParent, hasManyName).addObject(child);
-      }
-
-      set(child, belongsToName, oldParent);
-
-      this.destroy();
-      return;
-    }
-
-    //Ember.assert("You specified a belongsTo (" + belongsToName + ") on " + child.constructor + " but did not specify an inverse hasMany on " + (!hasManyName && (newParent || oldParent || this.lastParentRecord).constructor), hasManyName);
-
-    newParent = this.getNewParent();
-    var transaction = this.ensureSameTransaction(child, oldParent, newParent, hasManyName, belongsToName);
-
-    transaction.relationshipBecameDirty(this);
-
-    // Next, make sure that all three side of the association reflect the
-    // state of the OneToManyChange, while making sure to avoid an
-    // infinite loop.
-
+  callChangeEvents: function(){
+    var hasManyName = this.getSecondRecordName(),
+        belongsToName = this.getFirstRecordName(),
+        child = this.getFirstRecord(),
+        parentRecord = this.getSecondRecord();
 
     var dirtySet = new Ember.OrderedSet();
 
-    // If there is an `oldParent` and the `oldParent` is different to
-    // the `newParent`, use the idempotent `removeObject` to ensure
-    // that the record is no longer in its ManyArray. The `removeObject`
-    // method only has an effect if:
-    //
-    // 1. The change happened from the belongsTo side
-    // 2. The record was moved to a new parent without explicitly
-    //    removing it from the old parent first.
-    if (oldParent && oldParent !== newParent) {
-      get(oldParent, hasManyName).removeObject(child);
-
-      // TODO: This implementation causes a race condition in key-value
-      // stores. The fix involves buffering changes that happen while
-      // a record is loading. A similar fix is required for other parts
-      // of ember-data, and should be done as new infrastructure, not
-      // a one-off hack. [tomhuda]
-      if (get(oldParent, 'isLoaded')) {
-        this.store.recordHasManyDidChange(dirtySet, oldParent, this);
-      }
-    }
-
-    // If there is a `newParent`, use the idempotent `addObject`
-    // to ensure that the record is in its ManyArray. The `addObject`
-    // method only has an effect if the change happened from the
-    // belongsTo side.
-    if (newParent) {
-      get(newParent, hasManyName).addObject(child);
-
-      if (get(newParent, 'isLoaded')) {
-        this.store.recordHasManyDidChange(dirtySet, newParent, this);
-      }
+    // TODO: This implementation causes a race condition in key-value
+    // stores. The fix involves buffering changes that happen while
+    // a record is loading. A similar fix is required for other parts
+    // of ember-data, and should be done as new infrastructure, not
+    // a one-off hack. [tomhuda]
+    if (parentRecord && get(parentRecord, 'isLoaded')) {
+      this.store.recordHasManyDidChange(dirtySet, parentRecord, this);
     }
 
     if (child) {
-      // Only set the belongsTo on the child if it is not already the
-      // newParent. This happens if the change happened from the
-      // ManyArray side.
-      if (get(child, belongsToName) !== newParent) {
-        set(child, belongsToName, newParent);
-      }
-
       this.store.recordBelongsToDidChange(dirtySet, child, this);
     }
 
     dirtySet.forEach(function(record) {
       record.adapterDidDirty();
     });
-
-    // If this change is later reversed (A->B followed by B->A),
-    // we will need to remove the child from this parent. Save
-    // it off as `lastParent` so we can do that.
-    this.lastParent = newParentClientId;
   },
 
-  /** @private */
-  adapterDidUpdate: function() {
-    if (this.awaiting > 0) { return; }
-    var belongsToName = this.getBelongsToName();
-    var hasManyName = this.getHasManyName();
-    var oldParent, newParent, child;
+  coalesce: function(){
+    var relationshipPairs = this.store.relationshipChangePairsFor(this.firstRecordClientId);
+    forEach(relationshipPairs, function(pair){
+      var addedChange = pair["add"];
+      var removedChange = pair["remove"];
+      if(addedChange && removedChange) {
+        addedChange.destroy();
+        removedChange.destroy();
+      }
+    });
+  }
+};
 
-    this.destroy();
-  },
+DS.RelationshipChangeAdd.prototype = Ember.create(DS.RelationshipChange.create({}));
+DS.RelationshipChangeRemove.prototype = Ember.create(DS.RelationshipChange.create({}));
 
-  wait: function() {
-    this.awaiting++;
-  },
+DS.RelationshipChangeAdd.prototype.changeType = "add";
+DS.RelationshipChangeAdd.prototype.sync = function() {
+  var secondRecordName = this.getSecondRecordName(),
+      firstRecordName = this.getFirstRecordName(),
+      firstRecord = this.getFirstRecord(),
+      secondRecord = this.getSecondRecord();
 
-  done: function() {
-    this.awaiting--;
+  //Ember.assert("You specified a hasMany (" + hasManyName + ") on " + (!belongsToName && (newParent || oldParent || this.lastParent).constructor) + " but did not specify an inverse belongsTo on " + child.constructor, belongsToName);
+  //Ember.assert("You specified a belongsTo (" + belongsToName + ") on " + child.constructor + " but did not specify an inverse hasMany on " + (!hasManyName && (newParent || oldParent || this.lastParentRecord).constructor), hasManyName);
 
-    if (this.awaiting === 0) {
-      this.adapterDidUpdate();
+  var transaction = this.ensureSameTransaction();
+  transaction.relationshipBecameDirty(this);
+
+  this.callChangeEvents();
+
+  if (secondRecord && firstRecord) {
+    if(this.secondRecordKind === "belongsTo"){
+      secondRecord.suspendRelationshipObservers(function(){
+        set(secondRecord, secondRecordName, firstRecord);
+      });
+
+     }
+     else if(this.secondRecordKind === "hasMany"){
+      secondRecord.suspendRelationshipObservers(function(){
+        get(secondRecord, secondRecordName).addObject(firstRecord);
+      });
     }
   }
+
+  if (firstRecord && secondRecord && get(firstRecord, firstRecordName) !== secondRecord) {
+    if(this.firstRecordKind === "belongsTo"){
+      firstRecord.suspendRelationshipObservers(function(){
+        set(firstRecord, firstRecordName, secondRecord);
+      });
+    }
+    else if(this.firstdRecordKind === "hasMany"){
+      firstRecord.suspendRelationshipObservers(function(){
+        get(firstRecord, firstRecordName).addObject(secondRecord);
+      });
+    }
+  }
+
+  this.coalesce();
+};
+
+DS.RelationshipChangeRemove.prototype.changeType = "remove";
+DS.RelationshipChangeRemove.prototype.sync = function() {
+  var secondRecordName = this.getSecondRecordName(),
+      firstRecordName = this.getFirstRecordName(),
+      firstRecord = this.getFirstRecord(),
+      secondRecord = this.getSecondRecord();
+
+  //Ember.assert("You specified a hasMany (" + hasManyName + ") on " + (!belongsToName && (newParent || oldParent || this.lastParent).constructor) + " but did not specify an inverse belongsTo on " + child.constructor, belongsToName);
+  //Ember.assert("You specified a belongsTo (" + belongsToName + ") on " + child.constructor + " but did not specify an inverse hasMany on " + (!hasManyName && (newParent || oldParent || this.lastParentRecord).constructor), hasManyName);
+
+  var transaction = this.ensureSameTransaction(firstRecord, secondRecord, secondRecordName, firstRecordName);
+  transaction.relationshipBecameDirty(this);
+
+  this.callChangeEvents();
+
+  if (secondRecord && firstRecord) {
+    if(this.secondRecordKind === "belongsTo"){
+        set(secondRecord, secondRecordName, null);
+     }
+     else if(this.secondRecordKind === "hasMany"){
+       secondRecord.suspendRelationshipObservers(function(){
+        get(secondRecord, secondRecordName).removeObject(firstRecord);
+      });
+    }
+  }
+
+  if (firstRecord && get(firstRecord, firstRecordName)) {
+    if(this.firstRecordKind === "belongsTo"){
+      firstRecord.suspendRelationshipObservers(function(){
+        set(firstRecord, firstRecordName, null);
+      });
+     }
+     else if(this.firstdRecordKind === "hasMany"){
+       firstRecord.suspendRelationshipObservers(function(){
+        get(firstRecord, firstRecordName).removeObject(secondRecord);
+      });
+    }
+  }
+
+  this.coalesce();
 };
 
 function inverseBelongsToName(parentType, childType, hasManyName) {
@@ -4460,7 +4993,7 @@ function inverseBelongsToName(parentType, childType, hasManyName) {
     return belongsToName;
   }
 
-  return DS.inverseNameFor(childType, parentType, 'belongsTo');
+  return DS._inverseRelationshipFor(childType, parentType).name;
 }
 
 function inverseHasManyName(parentType, childType, belongsToName) {
@@ -4471,7 +5004,7 @@ function inverseHasManyName(parentType, childType, belongsToName) {
     return hasManyName;
   }
 
-  return DS.inverseNameFor(parentType, childType, 'hasMany');
+  return DS._inverseRelationshipFor(parentType, childType).name;
 }
 
 })();
@@ -4518,138 +5051,60 @@ var set = Ember.set;
 */
 
 Ember.onLoad('Ember.Application', function(Application) {
-  Application.registerInjection({
-    name: "store",
-    before: "controllers",
+  if (Application.registerInjection) {
+    Application.registerInjection({
+      name: "store",
+      before: "controllers",
 
-    // If a store subclass is defined, like App.Store,
-    // instantiate it and inject it into the router.
-    injection: function(app, stateManager, property) {
-      if (!stateManager) { return; }
-      if (property === 'Store') {
-        set(stateManager, 'store', app[property].create());
-      }
-    }
-  });
-
-  Application.registerInjection({
-    name: "giveStoreToControllers",
-    after: ['store','controllers'],
-
-    // For each controller, set its `store` property
-    // to the DS.Store instance we created above.
-    injection: function(app, stateManager, property) {
-      if (!stateManager) { return; }
-      if (/^[A-Z].*Controller$/.test(property)) {
-        var controllerName = property.charAt(0).toLowerCase() + property.substr(1);
-        var store = stateManager.get('store');
-        var controller = stateManager.get(controllerName);
-        if(!controller) { return; }
-
-        controller.set('store', store);
-      }
-    }
-  });
-});
-
-})();
-
-
-
-(function() {
-DS.Transforms = Ember.Object.extend({
-  string: {
-    fromData: function(serialized) {
-      return Ember.none(serialized) ? null : String(serialized);
-    },
-
-    toData: function(deserialized) {
-      return Ember.none(deserialized) ? null : String(deserialized);
-    }
-  },
-
-  number: {
-    fromData: function(serialized) {
-      return Ember.none(serialized) ? null : Number(serialized);
-    },
-
-    toData: function(deserialized) {
-      return Ember.none(deserialized) ? null : Number(deserialized);
-    }
-  },
-
-  // Handles the following boolean inputs:
-  // "TrUe", "t", "f", "FALSE", 0, (non-zero), or boolean true/false
-  'boolean': {
-    fromData: function(serialized) {
-      var type = typeof serialized;
-
-      if (type === "boolean") {
-        return serialized;
-      } else if (type === "string") {
-        return serialized.match(/^true$|^t$|^1$/i) !== null;
-      } else if (type === "number") {
-        return serialized === 1;
-      } else {
-        return false;
-      }
-    },
-
-    toData: function(deserialized) {
-      return Boolean(deserialized);
-    }
-  },
-
-  date: {
-    fromData: function(serialized) {
-      var type = typeof serialized;
-
-      if (type === "string" || type === "number") {
-        // this is a fix for Safari 5.1.5 on Mac which does not accept timestamps as yyyy-mm-dd
-        if (type === "string" && serialized.search(/^\d{4}-\d{2}-\d{2}$/) !== -1){
-          serialized += "T00:00:00Z";
+      // If a store subclass is defined, like App.Store,
+      // instantiate it and inject it into the router.
+      injection: function(app, stateManager, property) {
+        if (!stateManager) { return; }
+        if (property === 'Store') {
+          set(stateManager, 'store', app[property].create());
         }
-
-        return new Date(serialized);
-      } else if (serialized === null || serialized === undefined) {
-        // if the value is not present in the data,
-        // return undefined, not null.
-        return serialized;
-      } else {
-        return null;
       }
-    },
+    });
 
-    toData: function(date) {
-      if (date instanceof Date) {
-        var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-        var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    Application.registerInjection({
+      name: "giveStoreToControllers",
+      after: ['store','controllers'],
 
-        var pad = function(num) {
-          return num < 10 ? "0"+num : ""+num;
-        };
+      // For each controller, set its `store` property
+      // to the DS.Store instance we created above.
+      injection: function(app, stateManager, property) {
+        if (!stateManager) { return; }
+        if (/^[A-Z].*Controller$/.test(property)) {
+          var controllerName = property.charAt(0).toLowerCase() + property.substr(1);
+          var store = stateManager.get('store');
+          var controller = stateManager.get(controllerName);
+          if(!controller) { return; }
 
-        var utcYear = date.getUTCFullYear(),
-            utcMonth = date.getUTCMonth(),
-            utcDayOfMonth = date.getUTCDate(),
-            utcDay = date.getUTCDay(),
-            utcHours = date.getUTCHours(),
-            utcMinutes = date.getUTCMinutes(),
-            utcSeconds = date.getUTCSeconds();
-
-
-        var dayOfWeek = days[utcDay];
-        var dayOfMonth = pad(utcDayOfMonth);
-        var month = months[utcMonth];
-
-        return dayOfWeek + ", " + dayOfMonth + " " + month + " " + utcYear + " " +
-               pad(utcHours) + ":" + pad(utcMinutes) + ":" + pad(utcSeconds) + " GMT";
-      } else if (date === undefined) {
-        return undefined;
-      } else {
-        return null;
+          controller.set('store', store);
+        }
       }
-    }
+    });
+  } else if (Application.initializer) {
+    Application.initializer({
+      name: "store",
+
+      initialize: function(container, application) {
+        container.register('store', 'main', application.Store);
+
+        // Eagerly generate the store so defaultStore is populated.
+        // TODO: Do this in a finisher hook
+        container.lookup('store:main');
+      }
+    });
+
+    Application.initializer({
+      name: "injectStore",
+
+      initialize: function(container) {
+        container.typeInjection('controller', 'store', 'store:main');
+        container.typeInjection('route', 'store', 'store:main');
+      }
+    });
   }
 });
 
@@ -4658,30 +5113,96 @@ DS.Transforms = Ember.Object.extend({
 
 
 (function() {
-var get = Ember.get, set = Ember.set;
+var get = Ember.get, set = Ember.set, map = Ember.ArrayPolyfills.map, isNone = Ember.isNone;
+
+function mustImplement(name) {
+  return function() {
+    throw new Ember.Error("Your serializer " + this.toString() + " does not implement the required method " + name);
+  };
+}
 
 /**
-  The serializer is responsible for converting the data returned from the
-  adapter into the semantics expected by records in Ember Data. It is also
-  responsible for converting a record into the form expected by the adapter
-  when saving changes that have been made locally.
+  A serializer is responsible for serializing and deserializing a group of
+  records.
 
-  Typically, your application's `DS.Adapter` is responsible for both creating
-  a serializer as well as calling the appropriate methods when it needs to
+  `DS.Serializer` is an abstract base class designed to help you build a
+  serializer that can read to and write from any serialized form.  While most
+  applications will use `DS.JSONSerializer`, which reads and writes JSON, the
+  serializer architecture allows your adapter to transmit things like XML,
+  strings, or custom binary data.
+
+  Typically, your application's `DS.Adapter` is responsible for both creating a
+  serializer as well as calling the appropriate methods when it needs to
   materialize data or serialize a record.
+
+  The serializer API is designed as a series of layered hooks that you can
+  override to customize any of the individual steps of serialization and
+  deserialization.
+
+  The hooks are organized by the three responsibilities of the serializer:
+
+  1. Determining naming conventions
+  2. Serializing records into a serialized form
+  3. Deserializing records from a serialized form
+
+  Because Ember Data lazily materializes records, the deserialization
+  step, and therefore the hooks you implement, are split into two phases:
+
+  1. Extraction, where the serialized forms for multiple records are
+     extracted from a single payload. The IDs of each record are also
+     extracted for indexing.
+  2. Materialization, where a newly-created record has its attributes
+     and relationships initialized based on the serialized form loaded
+     by the adapter.
+
+  Additionally, a serializer can convert values from their JavaScript
+  versions into their serialized versions via a declarative API.
+
+  ## Naming Conventions
+
+  One of the most common uses of the serializer is to map attribute names
+  from the serialized form to your `DS.Model`. For example, in your model,
+  you may have an attribute called `firstName`:
+
+  ```javascript
+  App.Person = DS.Model.extend({
+    firstName: DS.attr('string')
+  });
+  ```
+
+  However, because the web API your adapter is communicating with is
+  legacy, it calls this attribute `FIRST_NAME`.
+
+  You can determine the attribute name used in the serialized form
+  by implementing `keyForAttributeName`:
+
+  ```javascript
+    keyForAttributeName: function(type, name) {
+      return name.underscore.toUpperCase();
+    }
+  ```
+
+  If your attribute names are not predictable, you can re-map them
+  one-by-one using the `map` API:
+
+  ```javascript
+  App.Person.map('App.Person', {
+    firstName: { key: '*API_USER_FIRST_NAME*' }
+  });
+  ```
 
   ## Serialization
 
-  These methods are responsible for taking a record and
-  producing a JSON object.
+  During the serialization process, a record or records are converted
+  from Ember.js objects into their serialized form.
 
   These methods are designed in layers, like a delicious 7-layer
   cake (but with fewer layers).
 
-  The main entry point for serialization is the `toData`
+  The main entry point for serialization is the `serialize`
   method, which takes the record and options.
 
-  The `toData` method is responsible for:
+  The `serialize` method is responsible for:
 
   * turning the record's attributes (`DS.attr`) into
     attributes on the JSON object.
@@ -4694,18 +5215,18 @@ var get = Ember.get, set = Ember.set;
   relationships on the JSON hash.
 
   For very custom serialization, you can implement your
-  own `toData` method. In general, however, you will want
+  own `serialize` method. In general, however, you will want
   to override the hooks described below.
 
   ### Adding the ID
 
-  The default `toData` will optionally call your serializer's
+  The default `serialize` will optionally call your serializer's
   `addId` method with the JSON hash it is creating, the
-  record's type, and the record's ID. The `toData` method
+  record's type, and the record's ID. The `serialize` method
   will not call `addId` if the record's ID is undefined.
 
   Your adapter must specifically request ID inclusion by
-  passing `{ includeId: true }` as an option to `toData`.
+  passing `{ includeId: true }` as an option to `serialize`.
 
   NOTE: You may not want to include the ID when updating an
   existing record, because your server will likely disallow
@@ -4730,7 +5251,7 @@ var get = Ember.get, set = Ember.set;
 
   ### Adding Attributes
 
-  By default, the serializer's `toData` method will call
+  By default, the serializer's `serialize` method will call
   `addAttributes` with the JSON object it is creating
   and the record to serialize.
 
@@ -4744,13 +5265,13 @@ var get = Ember.get, set = Ember.set;
   1. It will call `keyForAttributeName` to determine
      the key to use in the JSON hash.
   2. It will get the value from the record.
-  3. It will call `transformValueToData` with the attribute's
+  3. It will call `serializeValue` with the attribute's
      value and attribute type to convert it into a
      JSON-compatible value. For example, it will convert a
      Date into a String.
 
   If your backend expects a JSON object with attributes as
-  keys at the root, you can just override the `transformValueToData`
+  keys at the root, you can just override the `serializeValue`
   and `keyForAttributeName` methods in your serializer
   subclass and let the base class do the heavy lifting.
 
@@ -4760,7 +5281,7 @@ var get = Ember.get, set = Ember.set;
 
   ### Adding Relationships
 
-  By default, `toData` will call your serializer's
+  By default, `serialize` will call your serializer's
   `addRelationships` method with the JSON object that is
   being built and the record being serialized. The default
   implementation of this method is to loop over all of the
@@ -4787,10 +5308,270 @@ var get = Ember.get, set = Ember.set;
 */
 DS.Serializer = Ember.Object.extend({
   init: function() {
-    // By default, the JSON types are the transforms defined in DS.Transforms
-    this.transforms = DS.Transforms.create();
     this.mappings = Ember.Map.create();
+    this.configurations = Ember.Map.create();
+    this.globalConfigurations = {};
   },
+
+  extract: mustImplement('extract'),
+  extractMany: mustImplement('extractMany'),
+
+  extractRecordRepresentation: function(loader, type, json, shouldSideload) {
+    var mapping = this.mappingForType(type);
+    var embeddedData, prematerialized = {}, reference;
+
+    if (shouldSideload) {
+      reference = loader.sideload(type, json);
+    } else {
+      reference = loader.load(type, json);
+    }
+
+    this.eachEmbeddedHasMany(type, function(name, relationship) {
+      var embeddedData = json[this.keyFor(relationship)];
+      if (!isNone(embeddedData)) {
+        this.extractEmbeddedHasMany(loader, relationship, embeddedData, reference, prematerialized);
+      }
+    }, this);
+
+    this.eachEmbeddedBelongsTo(type, function(name, relationship) {
+      var embeddedData = json[this.keyFor(relationship)];
+      if (!isNone(embeddedData)) {
+        this.extractEmbeddedBelongsTo(loader, relationship, embeddedData, reference, prematerialized);
+      }
+    }, this);
+
+    loader.prematerialize(reference, prematerialized);
+
+    return reference;
+  },
+
+  extractEmbeddedHasMany: function(loader, relationship, array, parent, prematerialized) {
+    var references = map.call(array, function(item) {
+      if (!item) { return; }
+
+      var reference = this.extractRecordRepresentation(loader, relationship.type, item, true);
+
+      // If the embedded record should also be saved back when serializing the parent,
+      // make sure we set its parent since it will not have an ID.
+      var embeddedType = this.embeddedType(parent.type, relationship.key);
+      if (embeddedType === 'always') {
+        reference.parent = parent;
+      }
+
+      return reference;
+    }, this);
+
+    prematerialized[relationship.key] = references;
+  },
+
+  extractEmbeddedBelongsTo: function(loader, relationship, data, parent, prematerialized) {
+    var reference = loader.sideload(relationship.type, data);
+    prematerialized[relationship.key] = reference;
+
+    // If the embedded record should also be saved back when serializing the parent,
+    // make sure we set its parent since it will not have an ID.
+    var embeddedType = this.embeddedType(parent.type, relationship.key);
+    if (embeddedType === 'always') {
+      reference.parent = parent;
+    }
+  },
+
+  //.......................
+  //. SERIALIZATION HOOKS
+  //.......................
+
+  /**
+    The main entry point for serializing a record. While you can consider this
+    a hook that can be overridden in your serializer, you will have to manually
+    handle serialization. For most cases, there are more granular hooks that you
+    can override.
+
+    If overriding this method, these are the responsibilities that you will need
+    to implement yourself:
+
+    * If the option hash contains `includeId`, add the record's ID to the serialized form.
+      By default, `serialize` calls `addId` if appropriate.
+    * Add the record's attributes to the serialized form. By default, `serialize` calls
+      `addAttributes`.
+    * Add the record's relationships to the serialized form. By default, `serialize` calls
+      `addRelationships`.
+
+    @param {DS.Model} record the record to serialize
+    @param {Object} [options] a hash of options
+    @returns {any} the serialized form of the record
+  */
+  serialize: function(record, options) {
+    options = options || {};
+
+    var serialized = this.createSerializedForm(), id;
+
+    if (options.includeId) {
+      if (id = get(record, 'id')) {
+        this._addId(serialized, record.constructor, id);
+      }
+    }
+
+    this.addAttributes(serialized, record);
+    this.addRelationships(serialized, record);
+
+    return serialized;
+  },
+
+  /**
+    @private
+
+    Given an attribute type and value, convert the value into the
+    serialized form using the transform registered for that type.
+
+    @param {any} value the value to convert to the serialized form
+    @param {String} attributeType the registered type (e.g. `string`
+      or `boolean`)
+    @returns {any} the serialized form of the value
+  */
+  serializeValue: function(value, attributeType) {
+    var transform = this.transforms ? this.transforms[attributeType] : null;
+
+    Ember.assert("You tried to use an attribute type (" + attributeType + ") that has not been registered", transform);
+    return transform.serialize(value);
+  },
+
+  /**
+    A hook you can use to normalize IDs before adding them to the
+    serialized representation.
+
+    Because the store coerces all IDs to strings for consistency,
+    this is the opportunity for the serializer to, for example,
+    convert numerical IDs back into number form.
+
+    @param {String} id the id from the record
+    @returns {any} the serialized representation of the id
+  */
+  serializeId: function(id) {
+    if (isNaN(id)) { return id; }
+    return +id;
+  },
+
+  /**
+    A hook you can use to change how attributes are added to the serialized
+    representation of a record.
+
+    By default, `addAttributes` simply loops over all of the attributes of the
+    passed record, maps the attribute name to the key for the serialized form,
+    and invokes any registered transforms on the value. It then invokes the
+    more granular `addAttribute` with the key and transformed value.
+
+    Since you can override `keyForAttributeName`, `addAttribute`, and register
+    custom tranforms, you should rarely need to override this hook.
+
+    @param {any} data the serialized representation that is being built
+    @param {DS.Model} record the record to serialize
+  */
+  addAttributes: function(data, record) {
+    record.eachAttribute(function(name, attribute) {
+      this._addAttribute(data, record, name, attribute.type);
+    }, this);
+  },
+
+  /**
+    A hook you can use to customize how the key/value pair is added to
+    the serialized data.
+
+    @param {any} serialized the serialized form being built
+    @param {String} key the key to add to the serialized data
+    @param {any} value the value to add to the serialized data
+  */
+  addAttribute: Ember.K,
+
+  /**
+    A hook you can use to customize how the record's id is added to
+    the serialized data.
+
+    The `addId` hook is called with:
+
+    * the serialized representation being built
+    * the resolved primary key (taking configurations and the
+      `primaryKey` hook into consideration)
+    * the serialized id (after calling the `serializeId` hook)
+
+    @param {any} data the serialized representation that is being built
+    @param {String} key the resolved primary key
+    @param {id} id the serialized id
+  */
+  addId: Ember.K,
+
+  /**
+    A hook you can use to change how relationships are added to the serialized
+    representation of a record.
+
+    By default, `addAttributes` loops over all of the relationships of the
+    passed record, maps the relationship names to the key for the serialized form,
+    and then invokes the public `addBelongsTo` and `addHasMany` hooks.
+
+    Since you can override `keyForBelongsTo`, `keyForHasMany`, `addBelongsTo`,
+    `addHasMany`, and register mappings, you should rarely need to override this
+    hook.
+
+    @param {any} data the serialized representation that is being built
+    @param {DS.Model} record the record to serialize
+  */
+  addRelationships: function(data, record) {
+    record.eachRelationship(function(name, relationship) {
+      if (relationship.kind === 'belongsTo') {
+        this._addBelongsTo(data, record, name, relationship);
+      } else if (relationship.kind === 'hasMany') {
+        this._addHasMany(data, record, name, relationship);
+      }
+    }, this);
+  },
+
+  /**
+    A hook you can use to add a `belongsTo` relationship to the
+    serialized representation.
+
+    The specifics of this hook are very adapter-specific, so there
+    is no default implementation. You can see `DS.JSONSerializer`
+    for an example of an implementation of the `addBelongsTo` hook.
+
+    The `belongsTo` relationship object has the following properties:
+
+    * **type** a subclass of DS.Model that is the type of the
+      relationship. This is the first parameter to DS.belongsTo
+    * **options** the options passed to the call to DS.belongsTo
+    * **kind** always `belongsTo`
+
+    Additional properties may be added in the future.
+
+    @param {any} data the serialized representation that is being built
+    @param {DS.Model} record the record to serialize
+    @param {String} key the key for the serialized object
+    @param {Object} relationship an object representing the relationship
+  */
+  addBelongsTo: Ember.K,
+
+  /**
+    A hook you can use to add a `hasMany` relationship to the
+    serialized representation.
+
+    The specifics of this hook are very adapter-specific, so there
+    is no default implementation. You may not need to implement this,
+    for example, if your backend only expects relationships on the
+    child of a one to many relationship.
+
+    The `hasMany` relationship object has the following properties:
+
+    * **type** a subclass of DS.Model that is the type of the
+      relationship. This is the first parameter to DS.hasMany
+    * **options** the options passed to the call to DS.hasMany
+    * **kind** always `hasMany`
+
+    Additional properties may be added in the future.
+
+    @param {any} data the serialized representation that is being built
+    @param {DS.Model} record the record to serialize
+    @param {String} key the key for the serialized object
+    @param {Object} relationship an object representing the relationship
+  */
+  addHasMany: Ember.K,
 
   /**
     NAMING CONVENTIONS
@@ -4806,23 +5587,6 @@ DS.Serializer = Ember.Object.extend({
       extract the id from the adapter-provided data hash. It is
       also used when serializing a record.
   */
-
-  /**
-    @private
-
-    This method is called to get a key used in the data from
-    an attribute name. It first checks for any mappings before
-    calling the public hook `keyForAttributeName`.
-
-    @param {DS.Model subclass} type the type of the record with
-      the attribute name `name`
-    @param {String} name the attribute name to convert into a key
-
-    @returns {String} the key
-  */
-  _keyForAttributeName: function(type, name) {
-    return this._keyForJSONKey('keyForAttributeName', type, name);
-  },
 
   /**
     A hook you can use in your serializer subclass to customize
@@ -4852,167 +5616,6 @@ DS.Serializer = Ember.Object.extend({
   */
   keyForAttributeName: function(type, name) {
     return name;
-  },
-
-  /**
-    @private
-
-    This method is called to get a key used in the data from
-    a belongsTo association. It first checks for any mappings before
-    calling the public hook `keyForBelongsTo`.
-
-    @param {DS.Model subclass} type the type of the record with
-      the `belongsTo` association.
-    @param {String} name the association name to convert into a key
-
-    @returns {String} the key
-  */
-  _keyForBelongsTo: function(type, name) {
-    return this._keyForJSONKey('keyForBelongsTo', type, name);
-  },
-
-  /**
-    A hook you can use in your serializer subclass to customize
-    how an unmapped `belongsTo` association is converted into
-    a key.
-
-    By default, this method calls `keyForAttributeName`, so if
-    your naming convention is uniform across attributes and
-    associations, you can use the default here and override
-    just `keyForAttributeName` as needed.
-
-    For example, if the `belongsTo` names in your JSON always
-    begin with `BT_` (e.g. `BT_posts`), you can strip out the
-    `BT_` prefix:"
-
-    ```javascript
-    App.MySerializer = DS.Serializer.extend({
-      // ...
-      keyForBelongsTo: function(type, name) {
-        return name.match(/^BT_(.*)$/)[1].camelize();
-      }
-    });
-    ```
-
-    @param {DS.Model subclass} type the type of the record with
-      the `belongsTo` association.
-    @param {String} name the association name to convert into a key
-
-    @returns {String} the key
-  */
-  keyForBelongsTo: function(type, name) {
-    return this.keyForAttributeName(type, name);
-  },
-
-  /**
-    @private
-
-    This method is called to get a key used in the data from
-    a hasMany association. It first checks for any mappings before
-    calling the public hook `keyForHasMany`.
-
-    @param {DS.Model subclass} type the type of the record with
-      the `hasMany` association.
-    @param {String} name the association name to convert into a key
-
-    @returns {String} the key
-  */
-  _keyForHasMany: function(type, name) {
-    return this._keyForJSONKey('keyForHasMany', type, name);
-  },
-
-  /**
-    A hook you can use in your serializer subclass to customize
-    how an unmapped `hasMany` association is converted into
-    a key.
-
-    By default, this method calls `keyForAttributeName`, so if
-    your naming convention is uniform across attributes and
-    associations, you can use the default here and override
-    just `keyForAttributeName` as needed.
-
-    For example, if the `hasMany` names in your JSON always
-    begin with the "table name" for the current type (e.g.
-    `post_comments`), you can strip out the prefix:"
-
-    ```javascript
-    App.MySerializer = DS.Serializer.extend({
-      // ...
-      keyForHasMany: function(type, name) {
-        // if your App.BlogPost has many App.BlogComment, the key from
-        // the server would look like: `blog_post_blog_comments`
-        //
-        // 1. Convert the type into a string and underscore the
-        //    second part (App.BlogPost -> blog_post)
-        // 2. Extract the part after `blog_post_` (`blog_comments`)
-        // 3. Underscore it, to become `blogComments`
-        var typeString = type.toString().split(".")[1].underscore();
-        return name.match(new RegExp("^" + typeString + "_(.*)$"))[1].camelize();
-      }
-    });
-    ```
-
-    @param {DS.Model subclass} type the type of the record with
-      the `belongsTo` association.
-    @param {String} name the association name to convert into a key
-
-    @returns {String} the key
-  */
-  keyForHasMany: function(type, name) {
-    return this.keyForAttributeName(type, name);
-  },
-
-  /**
-    @private
-
-    An internal method that handles checking whether a mapping
-    exists for a particular attribute or association name before
-    calling the public hooks.
-
-    If a mapping is found, and the mapping has a key defined,
-    use that instead of invoking the hook.
-
-    @param {String} publicMethod the public hook to invoke if
-      a mapping is not found (e.g. `keyForAttributeName`)
-    @param {DS.Model subclass} type the type of the record with
-      the attribute or association name.
-    @param {String} name the attribute or association name to
-      convert into a key
-  */
-  _keyForJSONKey: function(publicMethod, type, name) {
-    var mapping = this.mappingForType(type),
-        mappingOptions = mapping && mapping[name],
-        key = mappingOptions && mappingOptions.key;
-
-    if (key) {
-      return key;
-    } else {
-      return this[publicMethod](type, name);
-    }
-  },
-
-  /**
-    @private
-
-    This method is called to get the primary key for a given
-    type.
-
-    If a primary key configuration exists for this type, this
-    method will return the configured value. Otherwise, it will
-    call the public `primaryKey` hook.
-
-    @param {DS.Model subclass} type
-    @returns {String} the primary key for the type
-  */
-  _primaryKey: function(type) {
-    var mapping = this.mappingForType(type),
-        primaryKey = mapping && mapping.primaryKey;
-
-    if (primaryKey) {
-      return primaryKey;
-    } else {
-      return this.primaryKey(type);
-    }
   },
 
   /**
@@ -5058,84 +5661,188 @@ DS.Serializer = Ember.Object.extend({
   },
 
   /**
-    SERIALIZATION
+    A hook you can use in your serializer subclass to customize
+    how an unmapped `belongsTo` relationship is converted into
+    a key.
+
+    By default, this method calls `keyForAttributeName`, so if
+    your naming convention is uniform across attributes and
+    relationships, you can use the default here and override
+    just `keyForAttributeName` as needed.
+
+    For example, if the `belongsTo` names in your JSON always
+    begin with `BT_` (e.g. `BT_posts`), you can strip out the
+    `BT_` prefix:"
+
+    ```javascript
+    App.MySerializer = DS.Serializer.extend({
+      // ...
+      keyForBelongsTo: function(type, name) {
+        return name.match(/^BT_(.*)$/)[1].camelize();
+      }
+    });
+    ```
+
+    @param {DS.Model subclass} type the type of the record with
+      the `belongsTo` relationship.
+    @param {String} name the relationship name to convert into a key
+
+    @returns {String} the key
   */
+  keyForBelongsTo: function(type, name) {
+    return this.keyForAttributeName(type, name);
+  },
 
   /**
-    The main entry point for serializing a record. While you can consider this
-    a hook that can be overridden in your serializer, you will have to manually
-    handle serialization. For most cases, there are more granular hooks that you
-    can override.
+    A hook you can use in your serializer subclass to customize
+    how an unmapped `hasMany` relationship is converted into
+    a key.
 
-    If overriding this method, these are the responsibilities that you will need
-    to implement yourself:
+    By default, this method calls `keyForAttributeName`, so if
+    your naming convention is uniform across attributes and
+    relationships, you can use the default here and override
+    just `keyForAttributeName` as needed.
 
-    * If the option hash contains `includeId`, add the record's ID to the serialized form.
-      By default, `toData` calls `addId` if appropriate.
-    * Add the record's attributes to the serialized form. By default, `toData` calls
-      `addAttributes`.
-    * Add the record's relationships to the serialized form. By default, `toData` calls
-      `addRelationships`.
+    For example, if the `hasMany` names in your JSON always
+    begin with the "table name" for the current type (e.g.
+    `post_comments`), you can strip out the prefix:"
 
-    @param {DS.Model} record the record to serialize
-    @param {Object} [options] a hash of options
-    @returns {any} the serialized form of the record
-  */
-  toData: function(record, options) {
-    options = options || {};
-
-    var hash = {}, id;
-
-    if (options.includeId) {
-      if (id = get(record, 'id')) {
-        this._addId(hash, record.constructor, id);
+    ```javascript
+    App.MySerializer = DS.Serializer.extend({
+      // ...
+      keyForHasMany: function(type, name) {
+        // if your App.BlogPost has many App.BlogComment, the key from
+        // the server would look like: `blog_post_blog_comments`
+        //
+        // 1. Convert the type into a string and underscore the
+        //    second part (App.BlogPost -> blog_post)
+        // 2. Extract the part after `blog_post_` (`blog_comments`)
+        // 3. Underscore it, to become `blogComments`
+        var typeString = type.toString().split(".")[1].underscore();
+        return name.match(new RegExp("^" + typeString + "_(.*)$"))[1].camelize();
       }
+    });
+    ```
+
+    @param {DS.Model subclass} type the type of the record with
+      the `belongsTo` relationship.
+    @param {String} name the relationship name to convert into a key
+
+    @returns {String} the key
+  */
+  keyForHasMany: function(type, name) {
+    return this.keyForAttributeName(type, name);
+  },
+
+  //.........................
+  //. MATERIALIZATION HOOKS
+  //.........................
+
+  materialize: function(record, serialized, prematerialized) {
+    var id;
+    if (Ember.isNone(get(record, 'id'))) {
+      if (prematerialized && prematerialized.hasOwnProperty('id')) {
+        id = prematerialized.id;
+      } else {
+        id = this.extractId(record.constructor, serialized);
+      }
+      record.materializeId(id);
     }
 
-    this.addAttributes(hash, record);
+    this.materializeAttributes(record, serialized, prematerialized);
+    this.materializeRelationships(record, serialized, prematerialized);
+  },
 
-    this.addRelationships(hash, record);
+  deserializeValue: function(value, attributeType) {
+    var transform = this.transforms ? this.transforms[attributeType] : null;
 
-    return hash;
+    Ember.assert("You tried to use a attribute type (" + attributeType + ") that has not been registered", transform);
+    return transform.deserialize(value);
+  },
+
+  materializeAttributes: function(record, serialized, prematerialized) {
+    record.eachAttribute(function(name, attribute) {
+      if (prematerialized && prematerialized.hasOwnProperty(name)) {
+        record.materializeAttribute(name, prematerialized[name]);
+      } else {
+        this.materializeAttribute(record, serialized, name, attribute.type);
+      }
+    }, this);
+  },
+
+  materializeAttribute: function(record, serialized, attributeName, attributeType) {
+    var value = this.extractAttribute(record.constructor, serialized, attributeName);
+    value = this.deserializeValue(value, attributeType);
+
+    record.materializeAttribute(attributeName, value);
+  },
+
+  materializeRelationships: function(record, hash, prematerialized) {
+    record.eachRelationship(function(name, relationship) {
+      if (relationship.kind === 'hasMany') {
+        if (prematerialized && prematerialized.hasOwnProperty(name)) {
+          record.materializeHasMany(name, prematerialized[name]);
+        } else {
+          this.materializeHasMany(name, record, hash, relationship, prematerialized);
+        }
+      } else if (relationship.kind === 'belongsTo') {
+        if (prematerialized && prematerialized.hasOwnProperty(name)) {
+          record.materializeBelongsTo(name, prematerialized[name]);
+        } else {
+          this.materializeBelongsTo(name, record, hash, relationship, prematerialized);
+        }
+      }
+    }, this);
+  },
+
+  materializeHasMany: function(name, record, hash, relationship) {
+    var key = this._keyForHasMany(record.constructor, relationship.key);
+    record.materializeHasMany(name, this.extractHasMany(record.constructor, hash, key));
+  },
+
+  materializeBelongsTo: function(name, record, hash, relationship) {
+    var key = this._keyForBelongsTo(record.constructor, relationship.key);
+    record.materializeBelongsTo(name, this.extractBelongsTo(record.constructor, hash, key));
+  },
+
+  _extractEmbeddedRelationship: function(type, hash, name, relationshipType) {
+    var key = this['_keyFor' + relationshipType](type, name);
+
+    if (this.embeddedType(type, name)) {
+      return this['extractEmbedded' + relationshipType](type, hash, key);
+    }
+  },
+
+  _extractEmbeddedBelongsTo: function(type, hash, name) {
+    return this._extractEmbeddedRelationship(type, hash, name, 'BelongsTo');
+  },
+
+  _extractEmbeddedHasMany: function(type, hash, name) {
+    return this._extractEmbeddedRelationship(type, hash, name, 'HasMany');
   },
 
   /**
     @private
 
-    Given an attribute type and value, convert the value into the
-    serialized form using the transform registered for that type.
+    This method is called to get the primary key for a given
+    type.
 
-    @param {any} value the value to convert to the serialized form
-    @param {String} attributeType the registered type (e.g. `string`
-      or `boolean`)
-    @returns {any} the serialized form of the value
+    If a primary key configuration exists for this type, this
+    method will return the configured value. Otherwise, it will
+    call the public `primaryKey` hook.
+
+    @param {DS.Model subclass} type
+    @returns {String} the primary key for the type
   */
-  transformValueToData: function(value, attributeType) {
-    var transform = this.transforms[attributeType];
+  _primaryKey: function(type) {
+    var config = this.configurationForType(type),
+        primaryKey = config && config.primaryKey;
 
-    Ember.assert("You tried to use an attribute type (" + attributeType + ") that has not been registered", transform);
-    return transform.toData(value);
-  },
-
-  /**
-    A hook you can use to change how attributes are added to the serialized
-    representation of a record.
-
-    By default, `addAttributes` simply loops over all of the attributes of the
-    passed record, maps the attribute name to the key for the serialized form,
-    and invokes any registered transforms on the value. It then invokes the
-    more granular `addAttribute` with the key and transformed value.
-
-    Since you can override `keyForAttributeName`, `addAttribute`, and register
-    custom tranforms, you should rarely need to override this hook.
-
-    @param {any} data the serialized representation that is being built
-    @param {DS.Model} record the record to serialize
-  */
-  addAttributes: function(data, record) {
-    record.eachAttribute(function(name, attribute) {
-      this._addAttribute(data, record, name, attribute.type);
-    }, this);
+    if (primaryKey) {
+      return primaryKey;
+    } else {
+      return this.primaryKey(type);
+    }
   },
 
   /**
@@ -5164,19 +5871,7 @@ DS.Serializer = Ember.Object.extend({
     var key = this._keyForAttributeName(record.constructor, attributeName);
     var value = get(record, attributeName);
 
-    this.addAttribute(data, key, this.transformValueToData(value, attributeType));
-  },
-
-  /**
-    A hook you can use to customize how the key/value pair is added to
-    the serialized data.
-
-    @param {any} data the serialized representation that is being built
-    @param {String} key the key to add to the serialized data
-    @param {any} value the value to add to the serialized data
-  */
-  addAttribute: function(data, key, value) {
-    data[key] = value;
+    this.addAttribute(data, key, this.serializeValue(value, attributeType));
   },
 
   /**
@@ -5199,49 +5894,67 @@ DS.Serializer = Ember.Object.extend({
   },
 
   /**
-    A hook you can use to customize how the record's id is added to
-    the serialized data.
+    @private
 
-    The `addId` hook is called with:
+    This method is called to get a key used in the data from
+    an attribute name. It first checks for any mappings before
+    calling the public hook `keyForAttributeName`.
 
-    * the serialized representation being built
-    * the resolved primary key (taking configurations and the
-      `primaryKey` hook into consideration)
-    * the serialized id (after calling the `serializeId` hook)
+    @param {DS.Model subclass} type the type of the record with
+      the attribute name `name`
+    @param {String} name the attribute name to convert into a key
 
-    @param {any} data the serialized representation that is being built
-    @param {String} key the resolved primary key
-    @param {id} id the serialized id
+    @returns {String} the key
   */
-  addId: function(data, key, id) {
-    data[key] = id;
+  _keyForAttributeName: function(type, name) {
+    return this._keyFromMappingOrHook('keyForAttributeName', type, name);
   },
 
   /**
-    A hook you can use to change how relationships are added to the serialized
-    representation of a record.
+    @private
 
-    By default, `addAttributes` loops over all of the relationships of the
-    passed record, maps the relationship names to the key for the serialized form,
-    and then invokes the public `addBelongsTo` and `addHasMany` hooks.
+    This method is called to get a key used in the data from
+    a belongsTo relationship. It first checks for any mappings before
+    calling the public hook `keyForBelongsTo`.
 
-    Since you can override `keyForBelongsTo`, `keyForHasMany`, `addBelongsTo`,
-    `addHasMany`, and register mappings, you should rarely need to override this
-    hook.
+    @param {DS.Model subclass} type the type of the record with
+      the `belongsTo` relationship.
+    @param {String} name the relationship name to convert into a key
 
-    @param {any} data the serialized representation that is being built
-    @param {DS.Model} record the record to serialize
+    @returns {String} the key
   */
-  addRelationships: function(data, record) {
-    record.eachAssociation(function(name, relationship) {
-      if (relationship.kind === 'belongsTo') {
-        this._addBelongsTo(data, record, name, relationship);
-      } else if (relationship.kind === 'hasMany') {
-        this._addHasMany(data, record, name, relationship);
-      }
-    }, this);
+  _keyForBelongsTo: function(type, name) {
+    return this._keyFromMappingOrHook('keyForBelongsTo', type, name);
   },
 
+  keyFor: function(description) {
+    var type = description.parentType,
+        name = description.key;
+
+    switch (description.kind) {
+      case 'belongsTo':
+        return this._keyForBelongsTo(type, name);
+      case 'hasMany':
+        return this._keyForHasMany(type, name);
+    }
+  },
+
+  /**
+    @private
+
+    This method is called to get a key used in the data from
+    a hasMany relationship. It first checks for any mappings before
+    calling the public hook `keyForHasMany`.
+
+    @param {DS.Model subclass} type the type of the record with
+      the `hasMany` relationship.
+    @param {String} name the relationship name to convert into a key
+
+    @returns {String} the key
+  */
+  _keyForHasMany: function(type, name) {
+    return this._keyFromMappingOrHook('keyForHasMany', type, name);
+  },
   /**
     @private
 
@@ -5275,191 +5988,30 @@ DS.Serializer = Ember.Object.extend({
   },
 
   /**
-    A hook you can use to add a `belongsTo` relationship to the
-    serialized representation.
-
-    The specifics of this hook are very adapter-specific, so there
-    is no default implementation. You can see `DS.RESTSerializer`
-    for an example of an implementation of the `addBelongsTo` hook.
-
-    The `belongsTo` relationship object has the following properties:
-
-    * **type** a subclass of DS.Model that is the type of the
-      relationship. This is the first parameter to DS.belongsTo
-    * **options** the options passed to the call to DS.belongsTo
-    * **kind** always `belongsTo`
-
-    Additional properties may be added in the future.
-
-    @param {any} data the serialized representation that is being built
-    @param {DS.Model} record the record to serialize
-    @param {String} key the key for the serialized object
-    @param {Object} relationship an object representing the relationship
-  */
-  addBelongsTo: Ember.K,
-
-  /**
-    A hook you can use to add a `hasMany` relationship to the
-    serialized representation.
-
-    The specifics of this hook are very adapter-specific, so there
-    is no default implementation. You may not need to implement this,
-    for example, if your backend only expects associations on the
-    child of a one to many relationship.
-
-    The `hasMany` relationship object has the following properties:
-
-    * **type** a subclass of DS.Model that is the type of the
-      relationship. This is the first parameter to DS.hasMany
-    * **options** the options passed to the call to DS.hasMany
-    * **kind** always `hasMany`
-
-    Additional properties may be added in the future.
-
-    @param {any} data the serialized representation that is being built
-    @param {DS.Model} record the record to serialize
-    @param {String} key the key for the serialized object
-    @param {Object} relationship an object representing the relationship
-  */
-  addHasMany: Ember.K,
-
-  /**
-    A hook you can use to normalize IDs before adding them to the
-    serialized representation.
-
-    Because the store coerces all IDs to strings for consistency,
-    this is the opportunity for the serializer to, for example,
-    convert numerical IDs back into number form.
-
-    @param {String} id the id from the record
-    @returns {any} the serialized representation of the id
-  */
-  serializeId: function(id) {
-    if (isNaN(id)) { return id; }
-    return +id;
-  },
-
-  /**
     @private
 
-    This method serializes a list of IDs using `serializeId`
+    An internal method that handles checking whether a mapping
+    exists for a particular attribute or relationship name before
+    calling the public hooks.
 
-    @returns {Array} an array of serialized IDs
+    If a mapping is found, and the mapping has a key defined,
+    use that instead of invoking the hook.
+
+    @param {String} publicMethod the public hook to invoke if
+      a mapping is not found (e.g. `keyForAttributeName`)
+    @param {DS.Model subclass} type the type of the record with
+      the attribute or relationship name.
+    @param {String} name the attribute or relationship name to
+      convert into a key
   */
-  serializeIds: function(ids) {
-    return Ember.EnumerableUtils.map(ids, function(id) {
-      return this.serializeId(id);
-    }, this);
-  },
+  _keyFromMappingOrHook: function(publicMethod, type, name) {
+    var key = this.mappingOption(type, name, 'key');
 
-  /**
-    DESERIALIZATION
-  */
-
-  transformValueFromData: function(value, attributeType) {
-    var transform = this.transforms[attributeType];
-
-    Ember.assert("You tried to use a attribute type (" + attributeType + ") that has not been registered", transform);
-    return transform.fromData(value);
-  },
-
-  materializeFromData: function(record, hash) {
-    if (Ember.none(get(record, 'id'))) {
-      record.materializeId(this.extractId(record.constructor, hash));
+    if (key) {
+      return key;
+    } else {
+      return this[publicMethod](type, name);
     }
-
-    this.materializeAttributes(record, hash);
-    this.materializeRelationships(record, hash);
-  },
-
-  materializeAttributes: function(record, hash) {
-    record.eachAttribute(function(name, attribute) {
-      this.materializeAttribute(record, hash, name, attribute.type);
-    }, this);
-  },
-
-  materializeAttribute: function(record, hash, attributeName, attributeType) {
-    var value = this.extractAttribute(record.constructor, hash, attributeName);
-    value = this.transformValueFromData(value, attributeType);
-
-    record.materializeAttribute(attributeName, value);
-  },
-
-  extractAttribute: function(type, hash, attributeName) {
-    var key = this._keyForAttributeName(type, attributeName);
-    return hash[key];
-  },
-
-  extractId: function(type, hash) {
-    var primaryKey = this._primaryKey(type);
-
-    // Ensure that we coerce IDs to strings so that record
-    // IDs remain consistent between application runs; especially
-    // if the ID is serialized and later deserialized from the URL,
-    // when type information will have been lost.
-    return hash[primaryKey]+'';
-  },
-
-  materializeRelationships: function(record, hash) {
-    record.eachAssociation(function(name, relationship) {
-      if (relationship.kind === 'hasMany') {
-        this.materializeHasMany(name, record, hash, relationship);
-      } else if (relationship.kind === 'belongsTo') {
-        this.materializeBelongsTo(name, record, hash, relationship);
-      }
-    }, this);
-  },
-
-  materializeHasMany: function(name, record, hash, relationship) {
-    record.materializeHasMany(name, this.extractHasMany(record.constructor, hash, relationship.key));
-  },
-
-  materializeBelongsTo: function(name, record, hash, relationship) {
-    record.materializeBelongsTo(name, this.extractBelongsTo(record.constructor, hash, relationship.key));
-  },
-
-  extractHasMany: function(type, hash, name) {
-    var key = this._keyForHasMany(type, name);
-    return hash[key];
-  },
-
-  extractBelongsTo: function(type, hash, name) {
-    var key = this._keyForBelongsTo(type, name);
-    return hash[key];
-  },
-
-  _extractEmbeddedRelationship: function(type, hash, name, relationshipType) {
-    var key = this['_keyFor' + relationshipType](type, name),
-        mappings = this.mappingForType(type),
-        mapping = mappings && mappings[name];
-
-    if (mapping && mapping.embedded === 'load') {
-      return this['extractEmbedded' + relationshipType](type, hash, key);
-    }
-  },
-
-  _extractEmbeddedBelongsTo: function(type, hash, name) {
-    return this._extractEmbeddedRelationship(type, hash, name, 'BelongsTo');
-  },
-
-  extractEmbeddedBelongsTo: function(type, hash, key) {
-    return hash[key];
-  },
-
-  _extractEmbeddedHasMany: function(type, hash, name) {
-    return this._extractEmbeddedRelationship(type, hash, name, 'HasMany');
-  },
-
-  extractEmbeddedHasMany: function(type, hash, key) {
-    return hash[key];
-  },
-
-  replaceEmbeddedBelongsTo: function(type, hash, name, id) {
-    hash[this._keyForBelongsTo(type, name)] = id;
-  },
-
-  replaceEmbeddedHasMany: function(type, hash, name, ids) {
-    hash[this._keyForHasMany(type, name)] = ids;
   },
 
   /**
@@ -5470,6 +6022,19 @@ DS.Serializer = Ember.Object.extend({
     this.transforms[type] = transform;
   },
 
+  registerEnumTransform: function(type, objects) {
+    var transform = {
+      deserialize: function(deserialized) {
+        return objects.objectAt(deserialized);
+      },
+      serialize: function(serialized) {
+        return objects.indexOf(serialized);
+      },
+      values: objects
+    };
+    this.registerTransform(type, transform);
+  },
+
   /**
     MAPPING CONVENIENCE
   */
@@ -5478,9 +6043,26 @@ DS.Serializer = Ember.Object.extend({
     this.mappings.set(type, mappings);
   },
 
+  configure: function(type, configuration) {
+    if (type && !configuration) {
+      Ember.merge(this.globalConfigurations, type);
+      return;
+    }
+
+    var config = Ember.create(this.globalConfigurations);
+    Ember.merge(config, configuration);
+
+    this.configurations.set(type, config);
+  },
+
   mappingForType: function(type) {
     this._reifyMappings();
-    return this.mappings.get(type);
+    return this.mappings.get(type) || {};
+  },
+
+  configurationForType: function(type) {
+    this._reifyConfigurations();
+    return this.configurations.get(type) || this.globalConfigurations;
   },
 
   _reifyMappings: function() {
@@ -5492,7 +6074,7 @@ DS.Serializer = Ember.Object.extend({
     mappings.forEach(function(key, mapping) {
       if (typeof key === 'string') {
         var type = Ember.get(Ember.lookup, key);
-        Ember.assert("Could not find model at path" + key, type);
+        Ember.assert("Could not find model at path " + key, type);
 
         reifiedMappings.set(type, mapping);
       } else {
@@ -5503,6 +6085,91 @@ DS.Serializer = Ember.Object.extend({
     this.mappings = reifiedMappings;
 
     this._didReifyMappings = true;
+  },
+
+  _reifyConfigurations: function() {
+    if (this._didReifyConfigurations) { return; }
+
+    var configurations = this.configurations,
+        reifiedConfigurations = Ember.Map.create();
+
+    configurations.forEach(function(key, mapping) {
+      if (typeof key === 'string' && key !== 'plurals') {
+        var type = Ember.get(Ember.lookup, key);
+        Ember.assert("Could not find model at path " + key, type);
+
+        reifiedConfigurations.set(type, mapping);
+      } else {
+        reifiedConfigurations.set(key, mapping);
+      }
+    });
+
+    this.configurations = reifiedConfigurations;
+
+    this._didReifyConfigurations = true;
+  },
+
+  mappingOption: function(type, name, option) {
+    var mapping = this.mappingForType(type)[name];
+
+    return mapping && mapping[option];
+  },
+
+  configOption: function(type, option) {
+    var config = this.configurationForType(type);
+
+    return config[option];
+  },
+
+  // EMBEDDED HELPERS
+
+  embeddedType: function(type, name) {
+    return this.mappingOption(type, name, 'embedded');
+  },
+
+  eachEmbeddedRecord: function(record, callback, binding) {
+    this.eachEmbeddedBelongsToRecord(record, callback, binding);
+    this.eachEmbeddedHasManyRecord(record, callback, binding);
+  },
+
+  eachEmbeddedBelongsToRecord: function(record, callback, binding) {
+    var type = record.constructor;
+
+    this.eachEmbeddedBelongsTo(record.constructor, function(name, relationship, embeddedType) {
+      var embeddedRecord = get(record, name);
+      if (embeddedRecord) { callback.call(binding, embeddedRecord, embeddedType); }
+    });
+  },
+
+  eachEmbeddedHasManyRecord: function(record, callback, binding) {
+    var type = record.constructor;
+
+    this.eachEmbeddedHasMany(record.constructor, function(name, relationship, embeddedType) {
+      var array = get(record, name);
+      for (var i=0, l=get(array, 'length'); i<l; i++) {
+        callback.call(binding, array.objectAt(i), embeddedType);
+      }
+    });
+  },
+
+  eachEmbeddedHasMany: function(type, callback, binding) {
+    this.eachEmbeddedRelationship(type, 'hasMany', callback, binding);
+  },
+
+  eachEmbeddedBelongsTo: function(type, callback, binding) {
+    this.eachEmbeddedRelationship(type, 'belongsTo', callback, binding);
+  },
+
+  eachEmbeddedRelationship: function(type, kind, callback, binding) {
+    type.eachRelationship(function(name, relationship) {
+      var embeddedType = this.embeddedType(type, name);
+
+      if (embeddedType) {
+        if (relationship.kind === kind) {
+          callback.call(binding, name, relationship, embeddedType);
+        }
+      }
+    }, this);
   }
 });
 
@@ -5512,6 +6179,424 @@ DS.Serializer = Ember.Object.extend({
 
 
 (function() {
+var none = Ember.isNone;
+
+/**
+  DS.Transforms is a hash of transforms used by DS.Serializer.
+*/
+DS.JSONTransforms = {
+  string: {
+    deserialize: function(serialized) {
+      return none(serialized) ? null : String(serialized);
+    },
+
+    serialize: function(deserialized) {
+      return none(deserialized) ? null : String(deserialized);
+    }
+  },
+
+  number: {
+    deserialize: function(serialized) {
+      return none(serialized) ? null : Number(serialized);
+    },
+
+    serialize: function(deserialized) {
+      return none(deserialized) ? null : Number(deserialized);
+    }
+  },
+
+  // Handles the following boolean inputs:
+  // "TrUe", "t", "f", "FALSE", 0, (non-zero), or boolean true/false
+  'boolean': {
+    deserialize: function(serialized) {
+      var type = typeof serialized;
+
+      if (type === "boolean") {
+        return serialized;
+      } else if (type === "string") {
+        return serialized.match(/^true$|^t$|^1$/i) !== null;
+      } else if (type === "number") {
+        return serialized === 1;
+      } else {
+        return false;
+      }
+    },
+
+    serialize: function(deserialized) {
+      return Boolean(deserialized);
+    }
+  },
+
+  date: {
+    deserialize: function(serialized) {
+      var type = typeof serialized;
+      var date = null;
+
+      if (type === "string" || type === "number") {
+        // this is a fix for Safari 5.1.5 on Mac which does not accept timestamps as yyyy-mm-dd
+        if (type === "string" && serialized.search(/^\d{4}-\d{2}-\d{2}$/) !== -1) {
+          serialized += "T00:00:00Z";
+        }
+
+        date = new Date(serialized);
+
+        // this is a fix for IE8 which does not accept timestamps in ISO 8601 format
+        if (type === "string" && isNaN(date)) {
+          date = new Date(Date.parse(serialized.replace(/\-/ig, '/').replace(/Z$/, '').split('.')[0]));
+        }
+
+        return date;
+      } else if (serialized === null || serialized === undefined) {
+        // if the value is not present in the data,
+        // return undefined, not null.
+        return serialized;
+      } else {
+        return null;
+      }
+    },
+
+    serialize: function(date) {
+      if (date instanceof Date) {
+        var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+        var pad = function(num) {
+          return num < 10 ? "0"+num : ""+num;
+        };
+
+        var utcYear = date.getUTCFullYear(),
+            utcMonth = date.getUTCMonth(),
+            utcDayOfMonth = date.getUTCDate(),
+            utcDay = date.getUTCDay(),
+            utcHours = date.getUTCHours(),
+            utcMinutes = date.getUTCMinutes(),
+            utcSeconds = date.getUTCSeconds();
+
+
+        var dayOfWeek = days[utcDay];
+        var dayOfMonth = pad(utcDayOfMonth);
+        var month = months[utcMonth];
+
+        return dayOfWeek + ", " + dayOfMonth + " " + month + " " + utcYear + " " +
+               pad(utcHours) + ":" + pad(utcMinutes) + ":" + pad(utcSeconds) + " GMT";
+      } else if (date === undefined) {
+        return undefined;
+      } else {
+        return null;
+      }
+    }
+  }
+};
+
+})();
+
+
+
+(function() {
+var get = Ember.get, set = Ember.set;
+
+var generatedId = 0;
+
+DS.JSONSerializer = DS.Serializer.extend({
+  init: function() {
+    this._super();
+
+    if (!get(this, 'transforms')) {
+      this.set('transforms', DS.JSONTransforms);
+    }
+
+    this.sideloadMapping = Ember.Map.create();
+
+    this.configure({
+      meta: 'meta',
+      since: 'since'
+    });
+  },
+
+  configure: function(type, configuration) {
+    if (type && !configuration) {
+      return this._super(type);
+    }
+
+    var sideloadAs = configuration.sideloadAs;
+
+    if (sideloadAs) {
+      this.sideloadMapping.set(sideloadAs, type);
+      delete configuration.sideloadAs;
+    }
+
+    this._super.apply(this, arguments);
+  },
+
+  addId: function(data, key, id) {
+    data[key] = id;
+  },
+
+  /**
+    A hook you can use to customize how the key/value pair is added to
+    the serialized data.
+
+    @param {any} hash the JSON hash being built
+    @param {String} key the key to add to the serialized data
+    @param {any} value the value to add to the serialized data
+  */
+  addAttribute: function(hash, key, value) {
+    hash[key] = value;
+  },
+
+  /**
+    @private
+
+    Creates an empty hash that will be filled in by the hooks called from the
+    `serialize()` method.
+
+    @return {Object}
+  */
+  createSerializedForm: function() {
+    return {};
+  },
+
+  extractAttribute: function(type, hash, attributeName) {
+    var key = this._keyForAttributeName(type, attributeName);
+    return hash[key];
+  },
+
+  extractId: function(type, hash) {
+    var primaryKey = this._primaryKey(type);
+
+    if (hash.hasOwnProperty(primaryKey)) {
+      // Ensure that we coerce IDs to strings so that record
+      // IDs remain consistent between application runs; especially
+      // if the ID is serialized and later deserialized from the URL,
+      // when type information will have been lost.
+      return hash[primaryKey]+'';
+    } else {
+      return null;
+    }
+  },
+
+  extractHasMany: function(type, hash, key) {
+    return hash[key];
+  },
+
+  extractBelongsTo: function(type, hash, key) {
+    return hash[key];
+  },
+
+  addBelongsTo: function(hash, record, key, relationship) {
+    var type = record.constructor,
+        name = relationship.key,
+        value = null,
+        embeddedChild;
+
+    if (this.embeddedType(type, name)) {
+      if (embeddedChild = get(record, name)) {
+        value = this.serialize(embeddedChild, { include: true });
+      }
+
+      hash[key] = value;
+    } else {
+      var id = get(record, relationship.key+'.id');
+      if (!Ember.isNone(id)) { hash[key] = id; }
+    }
+  },
+
+  /**
+    Adds a has-many relationship to the JSON hash being built.
+
+    The default REST semantics are to only add a has-many relationship if it
+    is embedded. If the relationship was initially loaded by ID, we assume that
+    that was done as a performance optimization, and that changes to the
+    has-many should be saved as foreign key changes on the child's belongs-to
+    relationship.
+
+    @param {Object} hash the JSON being built
+    @param {DS.Model} record the record being serialized
+    @param {String} key the JSON key into which the serialized relationship
+      should be saved
+    @param {Object} relationship metadata about the relationship being serialized
+  */
+  addHasMany: function(hash, record, key, relationship) {
+    var type = record.constructor,
+        name = relationship.key,
+        serializedHasMany = [],
+        manyArray, embeddedType;
+
+    // If the has-many is not embedded, there is nothing to do.
+    embeddedType = this.embeddedType(type, name);
+    if (embeddedType !== 'always') { return; }
+
+    // Get the DS.ManyArray for the relationship off the record
+    manyArray = get(record, name);
+
+    // Build up the array of serialized records
+    manyArray.forEach(function (record) {
+      serializedHasMany.push(this.serialize(record, { includeId: true }));
+    }, this);
+
+    // Set the appropriate property of the serialized JSON to the
+    // array of serialized embedded records
+    hash[key] = serializedHasMany;
+  },
+
+  // EXTRACTION
+
+  extract: function(loader, json, type, record) {
+    var root = this.rootForType(type);
+
+    this.sideload(loader, type, json, root);
+    this.extractMeta(loader, type, json);
+
+    if (json[root]) {
+      if (record) { loader.updateId(record, json[root]); }
+      this.extractRecordRepresentation(loader, type, json[root]);
+    }
+  },
+
+  extractMany: function(loader, json, type, records) {
+    var root = this.rootForType(type);
+    root = this.pluralize(root);
+
+    this.sideload(loader, type, json, root);
+    this.extractMeta(loader, type, json);
+
+    if (json[root]) {
+      var objects = json[root], references = [];
+      if (records) { records = records.toArray(); }
+
+      for (var i = 0; i < objects.length; i++) {
+        if (records) { loader.updateId(records[i], objects[i]); }
+        var reference = this.extractRecordRepresentation(loader, type, objects[i]);
+        references.push(reference);
+      }
+
+      loader.populateArray(references);
+    }
+  },
+
+  extractMeta: function(loader, type, json) {
+    var meta = json[this.configOption(type, 'meta')], since;
+    if (!meta) { return; }
+
+    if (since = meta[this.configOption(type, 'since')]) {
+      loader.sinceForType(type, since);
+    }
+  },
+
+  sideload: function(loader, type, json, root) {
+    var sideloadedType, mappings, loaded = {};
+
+    loaded[root] = true;
+
+    for (var prop in json) {
+      if (!json.hasOwnProperty(prop)) { continue; }
+      if (prop === root) { continue; }
+      if (prop === this.configOption(type, 'meta')) { continue; }
+
+      sideloadedType = type.typeForRelationship(prop);
+
+      if (!sideloadedType) {
+        sideloadedType = this.sideloadMapping.get(prop);
+
+        if (typeof sideloadedType === 'string') {
+          sideloadedType = get(Ember.lookup, sideloadedType);
+        }
+
+        Ember.assert("Your server returned a hash with the key " + prop + " but you have no mapping for it", !!sideloadedType);
+      }
+
+      this.sideloadRelationships(loader, sideloadedType, json, prop, loaded);
+    }
+  },
+
+  sideloadRelationships: function(loader, type, json, prop, loaded) {
+    loaded[prop] = true;
+
+    get(type, 'relationshipsByName').forEach(function(key, meta) {
+      key = meta.key || key;
+      if (meta.kind === 'belongsTo') {
+        key = this.pluralize(key);
+      }
+      if (json[key] && !loaded[key]) {
+        this.sideloadRelationships(loader, meta.type, json, key, loaded);
+      }
+    }, this);
+
+    this.loadValue(loader, type, json[prop]);
+  },
+
+  loadValue: function(loader, type, value) {
+    if (value instanceof Array) {
+      for (var i=0; i < value.length; i++) {
+        loader.sideload(type, value[i]);
+      }
+    } else {
+      loader.sideload(type, value);
+    }
+  },
+
+  // HELPERS
+
+  // define a plurals hash in your subclass to define
+  // special-case pluralization
+  pluralize: function(name) {
+    var plurals = this.configurations.get('plurals');
+    return (plurals && plurals[name]) || name + "s";
+  },
+
+  rootForType: function(type) {
+    var typeString = type.toString();
+
+    Ember.assert("Your model must not be anonymous. It was " + type, typeString.charAt(0) !== '(');
+
+    // use the last part of the name as the URL
+    var parts = typeString.split(".");
+    var name = parts[parts.length - 1];
+    return name.replace(/([A-Z])/g, '_$1').toLowerCase().slice(1);
+  }
+});
+
+})();
+
+
+
+(function() {
+function loaderFor(store) {
+  return {
+    load: function(type, data, prematerialized) {
+      return store.load(type, data, prematerialized);
+    },
+
+    loadMany: function(type, array) {
+      return store.loadMany(type, array);
+    },
+
+    updateId: function(record, data) {
+      return store.updateId(record, data);
+    },
+
+    populateArray: Ember.K,
+
+    sideload: function(type, data) {
+      return store.load(type, data);
+    },
+
+    sideloadMany: function(type, array) {
+      return store.loadMany(type, array);
+    },
+
+    prematerialize: function(reference, prematerialized) {
+      store.prematerialize(reference, prematerialized);
+    },
+
+    sinceForType: function(type, since) {
+      store.sinceForType(type, since);
+    }
+  };
+}
+
+DS.loaderFor = loaderFor;
+
 /**
   An adapter is an object that receives requests from a store and
   translates them into the appropriate action to take against your
@@ -5550,11 +6635,9 @@ DS.Serializer = Ember.Object.extend({
     * `updateRecords()`
     * `deleteRecords()`
     * `commit()`
-
-   For more information about the adapter API, please see `README.md`.
 */
 
-var get = Ember.get, set = Ember.set;
+var get = Ember.get, set = Ember.set, merge = Ember.merge;
 
 DS.Adapter = Ember.Object.extend(DS._Mappable, {
 
@@ -5567,6 +6650,7 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     }
 
     this._attributesMap = this.createInstanceMapFor('attributes');
+    this._configurationsMap = this.createInstanceMapFor('configurations');
 
     this._outstandingOperations = new Ember.MapWithDefault({
       defaultValue: function() { return 0; }
@@ -5580,19 +6664,360 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     this.registerSerializerMappings(serializer);
   },
 
-  dirtyRecordsForAttributeChange: function(dirtySet, record, attributeName, newValue, oldValue) {
-    // TODO: Custom equality checking [tomhuda]
-    if (newValue !== oldValue) {
-      dirtySet.add(record);
+  /**
+    Loads a payload for a record into the store.
+
+    This method asks the serializer to break the payload into
+    constituent parts, and then loads them into the store. For example,
+    if you have a payload that contains embedded records, they will be
+    extracted by the serializer and loaded into the store.
+
+    For example:
+
+    ```javascript
+      adapter.load(store, App.Person, {
+        id: 123,
+        firstName: "Yehuda",
+        lastName: "Katz",
+        occupations: [{
+          id: 345,
+          title: "Tricycle Mechanic"
+        }]    
+      });
+    ```
+
+    This will load the payload for the `App.Person` with ID `123` and
+    the embedded `App.Occupation` with ID `345`.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {any} payload
+  */
+  load: function(store, type, payload) {
+    var loader = loaderFor(store);
+    get(this, 'serializer').extractRecordRepresentation(loader, type, payload);
+  },
+
+  /**
+    Acknowledges that the adapter has finished creating a record.
+
+    Your adapter should call this method from `createRecord` when
+    it has saved a new record to its persistent storage and received
+    an acknowledgement.
+
+    If the persistent storage returns a new payload in response to the
+    creation, and you want to update the existing record with the
+    new information, pass the payload as the fourth parameter.
+
+    For example, the `RESTAdapter` saves newly created records by
+    making an Ajax request. When the server returns, the adapter
+    calls didCreateRecord. If the server returns a response body,
+    it is passed as the payload. 
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {DS.Model} record
+    @param {any} payload 
+  */
+  didCreateRecord: function(store, type, record, payload) {
+    store.didSaveRecord(record);
+
+    if (payload) {
+      var loader = DS.loaderFor(store);
+      var serializer = get(this, 'serializer');
+
+      loader.load = function(type, data, prematerialized) {
+        store.updateId(record, data);
+        return store.load(type, data, prematerialized);
+      };
+
+      get(this, 'serializer').extract(loader, payload, type);
     }
   },
 
+  /**
+    Acknowledges that the adapter has finished creating several records.
+
+    Your adapter should call this method from `createRecords` when it
+    has saved multiple created records to its persistent storage 
+    received an acknowledgement.
+
+    If the persistent storage returns a new payload in response to the
+    creation, and you want to update the existing record with the
+    new information, pass the payload as the fourth parameter.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {DS.Model} record
+    @param {any} payload 
+  */
+  didCreateRecords: function(store, type, records, payload) {
+    records.forEach(function(record) {
+      store.didSaveRecord(record);
+    }, this);
+
+    if (payload) {
+      var loader = DS.loaderFor(store);
+      get(this, 'serializer').extractMany(loader, payload, type, records);
+    }
+  },
+
+  /**
+    @private
+
+    Acknowledges that the adapter has finished updating or deleting a record.
+
+    Your adapter should call this method from `updateRecord` or `deleteRecord`
+    when it has updated or deleted a record to its persistent storage and
+    received an acknowledgement.
+
+    If the persistent storage returns a new payload in response to the
+    update or delete, and you want to update the existing record with the
+    new information, pass the payload as the fourth parameter.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {DS.Model} record
+    @param {any} payload 
+  */
+  didSaveRecord: function(store, type, record, payload) {
+    store.didSaveRecord(record);
+
+    var serializer = get(this, 'serializer'),
+        mappings = serializer.mappingForType(type);
+
+    serializer.eachEmbeddedRecord(record, function(embeddedRecord, embeddedType) {
+      if (embeddedType === 'load') { return; }
+
+      this.didSaveRecord(store, embeddedRecord.constructor, embeddedRecord);
+    }, this);
+
+    if (payload) {
+      var loader = DS.loaderFor(store);
+      serializer.extract(loader, payload, type);
+    }
+  },
+
+  /**
+    Acknowledges that the adapter has finished updating a record.
+
+    Your adapter should call this method from `updateRecord` when it
+    has updated a record to its persistent storage and received an
+    acknowledgement.
+
+    If the persistent storage returns a new payload in response to the
+    update, pass the payload as the fourth parameter.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {DS.Model} record
+    @param {any} payload 
+  */
+  didUpdateRecord: function() {
+    this.didSaveRecord.apply(this, arguments);
+  },
+
+  /**
+    Acknowledges that the adapter has finished deleting a record.
+
+    Your adapter should call this method from `deleteRecord` when it
+    has deleted a record from its persistent storage and received an
+    acknowledgement.
+
+    If the persistent storage returns a new payload in response to the
+    deletion, pass the payload as the fourth parameter.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {DS.Model} record
+    @param {any} payload 
+  */
+  didDeleteRecord: function() {
+    this.didSaveRecord.apply(this, arguments);
+  },
+
+  /**
+    Acknowledges that the adapter has finished updating or deleting 
+    multiple records.
+
+    Your adapter should call this method from its `updateRecords` or
+    `deleteRecords` when it has updated or deleted multiple records
+    to its persistent storage and received an acknowledgement.
+
+    If the persistent storage returns a new payload in response to the
+    creation, pass the payload as the fourth parameter.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {DS.Model} records
+    @param {any} payload 
+  */
+  didSaveRecords: function(store, type, records, payload) {
+    records.forEach(function(record) {
+      store.didSaveRecord(record);
+    }, this);
+
+    if (payload) {
+      var loader = DS.loaderFor(store);
+      get(this, 'serializer').extractMany(loader, payload, type);
+    }
+  },
+
+  /**
+    Acknowledges that the adapter has finished updating multiple records.
+
+    Your adapter should call this method from its `updateRecords` when
+    it has updated multiple records to its persistent storage and
+    received an acknowledgement.
+
+    If the persistent storage returns a new payload in response to the
+    update, pass the payload as the fourth parameter.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {DS.Model} records
+    @param {any} payload 
+  */
+  didUpdateRecords: function() {
+    this.didSaveRecords.apply(this, arguments);
+  },
+
+  /**
+    Acknowledges that the adapter has finished updating multiple records.
+
+    Your adapter should call this method from its `deleteRecords` when
+    it has deleted multiple records to its persistent storage and
+    received an acknowledgement.
+
+    If the persistent storage returns a new payload in response to the
+    deletion, pass the payload as the fourth parameter.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {DS.Model} records
+    @param {any} payload 
+  */
+  didDeleteRecords: function() {
+    this.didSaveRecords.apply(this, arguments);
+  },
+
+  /**
+    Loads the response to a request for a record by ID.
+
+    Your adapter should call this method from its `find` method
+    with the response from the backend.
+
+    You should pass the same ID to this method that was given
+    to your find method so that the store knows which record
+    to associate the new data with.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {any} payload 
+    @param {String} id
+  */
+  didFindRecord: function(store, type, payload, id) {
+    var loader = DS.loaderFor(store);
+
+    loader.load = function(type, data, prematerialized) {
+      prematerialized = prematerialized || {};
+      prematerialized.id = id;
+
+      return store.load(type, data, prematerialized);
+    };
+
+    get(this, 'serializer').extract(loader, payload, type);
+  },
+
+  /**
+    Loads the response to a request for all records by type.
+
+    You adapter should call this method from its `findAll`
+    method with the response from the backend.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {any} payload 
+  */
+  didFindAll: function(store, type, payload) {
+    var loader = DS.loaderFor(store),
+        serializer = get(this, 'serializer');
+
+    store.didUpdateAll(type);
+
+    serializer.extractMany(loader, payload, type);
+  },
+
+  /**
+    Loads the response to a request for records by query.
+
+    Your adapter should call this method from its `findQuery`
+    method with the response from the backend.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {any} payload 
+    @param {DS.AdapterPopulatedRecordArray} recordArray
+  */
+  didFindQuery: function(store, type, payload, recordArray) {
+    var loader = DS.loaderFor(store);
+
+    loader.populateArray = function(data) {
+      recordArray.load(data);
+    };
+
+    get(this, 'serializer').extractMany(loader, payload, type);
+  },
+
+  /**
+    Loads the response to a request for many records by ID.
+
+    You adapter should call this method from its `findMany`
+    method with the response from the backend.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {any} payload 
+  */
+  didFindMany: function(store, type, payload) {
+    var loader = DS.loaderFor(store);
+
+    get(this, 'serializer').extractMany(loader, payload, type);
+  },
+
+  /**
+    Notifies the store that a request to the backend returned
+    an error.
+
+    Your adapter should call this method to indicate that the
+    backend returned an error for a request.
+
+    @param {DS.Store} store
+    @param {subclass of DS.Model} type
+    @param {DS.Model} record
+  */
+  didError: function(store, type, record) {
+    store.recordWasError(record);
+  },
+
+  dirtyRecordsForAttributeChange: function(dirtySet, record, attributeName, newValue, oldValue) {
+    if (newValue !== oldValue) {
+      // If this record is embedded, add its parent
+      // to the dirty set.
+      this.dirtyRecordsForRecordChange(dirtySet, record);
+    }
+  },
+
+  dirtyRecordsForRecordChange: function(dirtySet, record) {
+    dirtySet.add(record);
+  },
+
   dirtyRecordsForBelongsToChange: function(dirtySet, child) {
-    dirtySet.add(child);
+    this.dirtyRecordsForRecordChange(dirtySet, child);
   },
 
   dirtyRecordsForHasManyChange: function(dirtySet, parent) {
-    dirtySet.add(parent);
+    this.dirtyRecordsForRecordChange(dirtySet, parent);
   },
 
   /**
@@ -5639,11 +7064,11 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
       mappings onto
   */
   registerSerializerMappings: function(serializer) {
-    var mappings = this._attributesMap;
+    var mappings = this._attributesMap,
+        configurations = this._configurationsMap;
 
-    mappings.forEach(function(type, mapping) {
-      serializer.map(type, mapping);
-    }, this);
+    mappings.forEach(serializer.map, serializer);
+    configurations.forEach(serializer.configure, serializer);
   },
 
   /**
@@ -5669,10 +7094,40 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
   */
   find: null,
 
-  serializer: DS.Serializer,
+  serializer: DS.JSONSerializer,
 
   registerTransform: function(attributeType, transform) {
     get(this, 'serializer').registerTransform(attributeType, transform);
+  },
+
+  /**
+    A public method that allows you to register an enumerated 
+    type on your adapter.  This is useful if you want to utilize
+    a text representation of an integer value.
+
+    Eg: Say you want to utilize "low","medium","high" text strings
+    in your app, but you want to persist those as 0,1,2 in your backend.
+    You would first register the transform on your adapter instance:
+
+    adapter.registerEnumTransform('priority', ['low', 'medium', 'high']);
+
+    You would then refer to the 'priority' DS.attr in your model:
+    App.Task = DS.Model.extend({
+      priority: DS.attr('priority') 
+    });
+
+    And lastly, you would set/get the text representation on your model instance,
+    but the transformed result will be the index number of the type.
+
+    App:   myTask.get('priority') => 'low'
+    Server Response / Load:  { myTask: {priority: 0} }
+
+    @param {String} type of the transform
+    @param {Array} array of String objects to use for the enumerated values.  
+      This is an ordered list and the index values will be used for the transform.
+  */
+  registerEnumTransform: function(attributeType, objects) {
+    get(this, 'serializer').registerEnumTransform(attributeType, objects);
   },
 
   /**
@@ -5696,57 +7151,16 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
   */
   generateIdForRecord: null,
 
-  materialize: function(record, data) {
-    get(this, 'serializer').materializeFromData(record, data);
+  materialize: function(record, data, prematerialized) {
+    get(this, 'serializer').materialize(record, data, prematerialized);
   },
 
-  toData: function(record, options) {
-    return get(this, 'serializer').toData(record, options);
+  serialize: function(record, options) {
+    return get(this, 'serializer').serialize(record, options);
   },
 
   extractId: function(type, data) {
     return get(this, 'serializer').extractId(type, data);
-  },
-
-  extractEmbeddedData: function(store, type, data) {
-    var serializer = get(this, 'serializer');
-
-    type.eachAssociation(function(name, association) {
-      var dataListToLoad, dataToLoad, typeToLoad;
-
-      if (association.kind === 'hasMany') {
-        this._extractEmbeddedHasMany(store, serializer, type, data, association);
-      } else if (association.kind === 'belongsTo') {
-        this._extractEmbeddedBelongsTo(store, serializer, type, data, association);
-      }
-    }, this);
-  },
-
-  _extractEmbeddedHasMany: function(store, serializer, type, data, association) {
-    var dataListToLoad = serializer._extractEmbeddedHasMany(type, data, association.key),
-        typeToLoad = association.type;
-
-    if (dataListToLoad) {
-      var ids = [];
-
-      for (var i=0, l=dataListToLoad.length; i<l; i++) {
-        var dataToLoad = dataListToLoad[i];
-        ids.push(store.adapterForType(typeToLoad).extractId(typeToLoad, dataToLoad));
-      }
-      serializer.replaceEmbeddedHasMany(type, data, association.key, ids);
-      store.loadMany(association.type, dataListToLoad);
-    }
-  },
-
-  _extractEmbeddedBelongsTo: function(store, serializer, type, data, association) {
-    var dataToLoad = serializer._extractEmbeddedBelongsTo(type, data, association.key),
-        typeToLoad = association.type;
-
-    if (dataToLoad) {
-      var id = store.adapterForType(typeToLoad).extractId(typeToLoad, dataToLoad);
-      serializer.replaceEmbeddedBelongsTo(type, data, association.key, id);
-      store.load(association.type, dataToLoad);
-    }
   },
 
   groupByType: function(enumerable) {
@@ -5761,29 +7175,39 @@ DS.Adapter = Ember.Object.extend(DS._Mappable, {
     return map;
   },
 
-  processRelationship: function(relationship) {
-    // TODO: Track changes to relationships made after a
-    // materialization request but before the adapter
-    // responds. [tomhuda]
-  },
-
   commit: function(store, commitDetails) {
     this.save(store, commitDetails);
   },
 
   save: function(store, commitDetails) {
+    var adapter = this;
+
+    function filter(records) {
+      var filteredSet = Ember.OrderedSet.create();
+
+      records.forEach(function(record) {
+        if (adapter.shouldSave(record)) {
+          filteredSet.add(record);
+        }
+      });
+
+      return filteredSet;
+    }
+
     this.groupByType(commitDetails.created).forEach(function(type, set) {
-      this.createRecords(store, type, set.copy());
+      this.createRecords(store, type, filter(set));
     }, this);
 
     this.groupByType(commitDetails.updated).forEach(function(type, set) {
-      this.updateRecords(store, type, set.copy());
+      this.updateRecords(store, type, filter(set));
     }, this);
 
     this.groupByType(commitDetails.deleted).forEach(function(type, set) {
-      this.deleteRecords(store, type, set.copy());
+      this.deleteRecords(store, type, filter(set));
     }, this);
   },
+
+  shouldSave: Ember.K,
 
   createRecords: function(store, type, records) {
     records.forEach(function(record) {
@@ -5822,17 +7246,25 @@ DS.Adapter.reopenClass({
   map: DS._Mappable.generateMapFunctionFor('attributes', function(key, newValue, map) {
     var existingValue = map.get(key);
 
-    for (var prop in newValue) {
-      if (!newValue.hasOwnProperty(prop)) { continue; }
-      existingValue[prop] = newValue[prop];
+    merge(existingValue, newValue);
+  }),
+
+  configure: DS._Mappable.generateMapFunctionFor('configurations', function(key, newValue, map) {
+    var existingValue = map.get(key);
+
+    // If a mapping configuration is provided, peel it off and apply it
+    // using the DS.Adapter.map API.
+    var mappings = newValue && newValue.mappings;
+    if (mappings) {
+      this.map(key, mappings);
+      delete newValue.mappings;
     }
+
+    merge(existingValue, newValue);
   }),
 
   resolveMapConflict: function(oldValue, newValue, mappingsKey) {
-    for (var prop in oldValue) {
-      if (!oldValue.hasOwnProperty(prop)) { continue; }
-      newValue[prop] = oldValue[prop];
-    }
+    merge(newValue, oldValue);
 
     return newValue;
   }
@@ -5855,13 +7287,23 @@ DS.FixtureAdapter = DS.Adapter.extend({
     Implement this method in order to provide data associated with a type
   */
   fixturesForType: function(type) {
-    return type.FIXTURES ? Ember.A(type.FIXTURES) : null;
+    if (type.FIXTURES) {
+      var fixtures = Ember.A(type.FIXTURES);
+      return fixtures.map(function(fixture){
+        if(!fixture.id){
+          throw new Error('the id property must be defined for fixture %@'.fmt(fixture));
+        }
+        fixture.id = fixture.id + '';
+        return fixture;
+      });
+    }
+    return null;
   },
 
   /*
     Implement this method in order to query fixtures data
   */
-  queryFixtures: function(fixtures, query) {
+  queryFixtures: function(fixtures, query, type) {
     return fixtures;
   },
 
@@ -5869,7 +7311,7 @@ DS.FixtureAdapter = DS.Adapter.extend({
     Implement this method in order to provide provide json for CRUD methods
   */
   mockJSON: function(type, record) {
-    return this.toData(record, { includeId: true });
+    return this.serialize(record, { includeId: true });
   },
 
   /*
@@ -5929,7 +7371,7 @@ DS.FixtureAdapter = DS.Adapter.extend({
 
     Ember.assert("Unable to find fixtures for model type "+type.toString(), !!fixtures);
 
-    fixtures = this.queryFixtures(fixtures, query);
+    fixtures = this.queryFixtures(fixtures, query, type);
 
     if (fixtures) {
       this.simulateRemoteCall(function() {
@@ -5974,28 +7416,24 @@ DS.FixtureAdapter = DS.Adapter.extend({
   }
 });
 
-DS.fixtureAdapter = DS.FixtureAdapter.create();
-
 })();
 
 
 
 (function() {
-var get = Ember.get;
-
-DS.RESTSerializer = DS.Serializer.extend({
-  keyForBelongsTo: function(type, name) {
-    return this.keyForAttributeName(type, name) + "_id";
-  },
-
+DS.RESTSerializer = DS.JSONSerializer.extend({
   keyForAttributeName: function(type, name) {
     return Ember.String.decamelize(name);
   },
 
-  addBelongsTo: function(hash, record, key, relationship) {
-    var id = get(record, relationship.key+'.id');
+  keyForBelongsTo: function(type, name) {
+    var key = this.keyForAttributeName(type, name);
 
-    if (!Ember.none(id)) { hash[key] = id; }
+    if (this.embeddedType(type, name)) {
+      return key;
+    }
+
+    return key + "_id";
   }
 });
 
@@ -6006,57 +7444,118 @@ DS.RESTSerializer = DS.Serializer.extend({
 (function() {
 /*global jQuery*/
 
-var get = Ember.get, set = Ember.set;
+var get = Ember.get, set = Ember.set, merge = Ember.merge;
 
+/**
+  The REST adapter allows your store to communicate with an HTTP server by
+  transmitting JSON via XHR. Most Ember.js apps that consume a JSON API
+  should use the REST adapter.
+
+  This adapter is designed around the idea that the JSON exchanged with
+  the server should be conventional.
+
+  ## JSON Structure
+
+  The REST adapter expects the JSON returned from your server to follow
+  these conventions.
+
+  ### Object Root
+
+  The JSON payload should be an object that contains the record inside a
+  root property. For example, in response to a `GET` request for
+  `/posts/1`, the JSON should look like this:
+
+  ```js
+  {
+    "post": {
+      title: "I'm Running to Reform the W3C's Tag",
+      author: "Yehuda Katz"
+    }
+  }
+  ```
+
+  ### Conventional Names
+
+  Attribute names in your JSON payload should be the underscored versions of
+  the attributes in your Ember.js models.
+
+  For example, if you have a `Person` model:
+
+  ```js
+  App.Person = DS.Model.extend({
+    firstName: DS.attr('string'),
+    lastName: DS.attr('string'),
+    occupation: DS.attr('string')
+  });
+  ```
+
+  The JSON returned should look like this:
+
+  ```js
+  {
+    "person": {
+      "first_name": "Barack",
+      "last_name": "Obama",
+      "occupation": "President"
+    }
+  }
+  ```
+*/
 DS.RESTAdapter = DS.Adapter.extend({
   bulkCommit: false,
+  since: 'since',
 
   serializer: DS.RESTSerializer,
+
+  init: function() {
+    this._super.apply(this, arguments);
+  },
+
+  shouldSave: function(record) {
+    var reference = get(record, '_reference');
+
+    return !reference.parent;
+  },
 
   createRecord: function(store, type, record) {
     var root = this.rootForType(type);
 
     var data = {};
-    data[root] = this.toData(record, { includeId: true });
+    data[root] = this.serialize(record, { includeId: true });
 
     this.ajax(this.buildURL(root), "POST", {
       data: data,
       context: this,
       success: function(json) {
-        this.didCreateRecord(store, type, record, json);
+        Ember.run(this, function(){
+          this.didCreateRecord(store, type, record, json);
+        });
       },
       error: function(xhr) {
-        this.context.didError(store, type, record, xhr);
+        this.didError(store, type, record, xhr);
       }
     });
+  },
+
+  dirtyRecordsForRecordChange: function(dirtySet, record) {
+    dirtySet.add(record);
+
+    get(this, 'serializer').eachEmbeddedRecord(record, function(embeddedRecord, embeddedType) {
+      if (embeddedType !== 'always') { return; }
+      if (dirtySet.has(embeddedRecord)) { return; }
+      this.dirtyRecordsForRecordChange(dirtySet, embeddedRecord);
+    }, this);
+
+    var reference = record.get('_reference');
+
+    if (reference.parent) {
+      var store = get(record, 'store');
+      var parent = store.recordForReference(reference.parent);
+      this.dirtyRecordsForRecordChange(dirtySet, parent);
+    }
   },
 
   dirtyRecordsForHasManyChange: Ember.K,
-
-  didSaveRecord: function(store, record, hash) {
-    record.eachAssociation(function(name, meta) {
-      if (meta.kind === 'belongsTo') {
-        store.didUpdateRelationship(record, name);
-      }
-    });
-
-    store.didSaveRecord(record, hash);
-  },
-
-  didSaveRecords: function(store, records, array) {
-    var i = 0;
-
-    records.forEach(function(record) {
-      this.didSaveRecord(store, record, array && array[i++]);
-    }, this);
-  },
-
-  didCreateRecord: function(store, type, record, json) {
-    var root = this.rootForType(type);
-
-    this.sideload(store, type, json, root);
-    this.didSaveRecord(store, record, json[root]);
-  },
 
   createRecords: function(store, type, records) {
     if (get(this, 'bulkCommit') === false) {
@@ -6069,23 +7568,18 @@ DS.RESTAdapter = DS.Adapter.extend({
     var data = {};
     data[plural] = [];
     records.forEach(function(record) {
-      data[plural].push(this.toData(record, { includeId: true }));
+      data[plural].push(this.serialize(record, { includeId: true }));
     }, this);
 
     this.ajax(this.buildURL(root), "POST", {
       data: data,
       context: this,
       success: function(json) {
-        this.didCreateRecords(store, type, records, json);
+        Ember.run(this, function(){
+          this.didCreateRecords(store, type, records, json);
+        });
       }
     });
-  },
-
-  didCreateRecords: function(store, type, records, json) {
-    var root = this.pluralize(this.rootForType(type));
-
-    this.sideload(store, type, json, root);
-    this.didSaveRecords(store, records, json[root]);
   },
 
   updateRecord: function(store, type, record) {
@@ -6093,25 +7587,20 @@ DS.RESTAdapter = DS.Adapter.extend({
     var root = this.rootForType(type);
 
     var data = {};
-    data[root] = this.toData(record);
+    data[root] = this.serialize(record);
 
     this.ajax(this.buildURL(root, id), "PUT", {
       data: data,
       context: this,
       success: function(json) {
-        this.didUpdateRecord(store, type, record, json);
+        Ember.run(this, function(){
+          this.didSaveRecord(store, type, record, json);
+        });
       },
       error: function(xhr) {
-        this.context.didError(store, type, record, xhr);
+        this.didError(store, type, record, xhr);
       }
     });
-  },
-
-  didUpdateRecord: function(store, type, record, json) {
-    var root = this.rootForType(type);
-
-    this.sideload(store, type, json, root);
-    this.didSaveRecord(store, record, json && json[root]);
   },
 
   updateRecords: function(store, type, records) {
@@ -6125,23 +7614,18 @@ DS.RESTAdapter = DS.Adapter.extend({
     var data = {};
     data[plural] = [];
     records.forEach(function(record) {
-      data[plural].push(this.toData(record, { includeId: true }));
+      data[plural].push(this.serialize(record, { includeId: true }));
     }, this);
 
     this.ajax(this.buildURL(root, "bulk"), "PUT", {
       data: data,
       context: this,
       success: function(json) {
-        this.didUpdateRecords(store, type, records, json);
+        Ember.run(this, function(){
+          this.didSaveRecords(store, type, records, json);
+        });
       }
     });
-  },
-
-  didUpdateRecords: function(store, type, records, json) {
-    var root = this.pluralize(this.rootForType(type));
-
-    this.sideload(store, type, json, root);
-    this.didSaveRecords(store, records, json[root]);
   },
 
   deleteRecord: function(store, type, record) {
@@ -6151,14 +7635,11 @@ DS.RESTAdapter = DS.Adapter.extend({
     this.ajax(this.buildURL(root, id), "DELETE", {
       context: this,
       success: function(json) {
-        this.didDeleteRecord(store, type, record, json);
+        Ember.run(this, function(){
+          this.didSaveRecord(store, type, record, json);
+        });
       }
     });
-  },
-
-  didDeleteRecord: function(store, type, record, json) {
-    if (json) { this.sideload(store, type, json); }
-    this.didSaveRecord(store, record);
   },
 
   deleteRecords: function(store, type, records) {
@@ -6180,14 +7661,11 @@ DS.RESTAdapter = DS.Adapter.extend({
       data: data,
       context: this,
       success: function(json) {
-        this.didDeleteRecords(store, type, records, json);
+        Ember.run(this, function(){
+          this.didSaveRecords(store, type, records, json);
+        });
       }
     });
-  },
-
-  didDeleteRecords: function(store, type, records, json) {
-    if (json) { this.sideload(store, type, json); }
-    this.didSaveRecords(store, records);
   },
 
   find: function(store, type, id) {
@@ -6195,16 +7673,11 @@ DS.RESTAdapter = DS.Adapter.extend({
 
     this.ajax(this.buildURL(root, id), "GET", {
       success: function(json) {
-        this.didFindRecord(store, type, json, id);
+        Ember.run(this, function(){
+          this.didFindRecord(store, type, json, id);
+        });
       }
     });
-  },
-
-  didFindRecord: function(store, type, json, id) {
-    var root = this.rootForType(type);
-
-    this.sideload(store, type, json, root);
-    store.load(type, id, json[root]);
   },
 
   findAll: function(store, type, since) {
@@ -6213,23 +7686,11 @@ DS.RESTAdapter = DS.Adapter.extend({
     this.ajax(this.buildURL(root), "GET", {
       data: this.sinceQuery(since),
       success: function(json) {
-        this.didFindAll(store, type, json);
+        Ember.run(this, function(){
+          this.didFindAll(store, type, json);
+        });
       }
     });
-  },
-
-  didFindAll: function(store, type, json) {
-    var root = this.pluralize(this.rootForType(type)),
-        since = this.extractSince(json);
-
-    this.sideload(store, type, json, root);
-    store.loadMany(type, json[root]);
-
-    // this registers the id with the store, so it will be passed
-    // into the next call to `findAll`
-    if (since) { store.sinceForType(type, since); }
-
-    store.didUpdateAll(type);
   },
 
   findQuery: function(store, type, query, recordArray) {
@@ -6238,35 +7699,40 @@ DS.RESTAdapter = DS.Adapter.extend({
     this.ajax(this.buildURL(root), "GET", {
       data: query,
       success: function(json) {
-        this.didFindQuery(store, type, json, recordArray);
+        Ember.run(this, function(){
+          this.didFindQuery(store, type, json, recordArray);
+        });
       }
     });
-  },
-
-  didFindQuery: function(store, type, json, recordArray) {
-    var root = this.pluralize(this.rootForType(type));
-
-    this.sideload(store, type, json, root);
-    recordArray.load(json[root]);
   },
 
   findMany: function(store, type, ids) {
     var root = this.rootForType(type);
-    ids = get(this, 'serializer').serializeIds(ids);
+    ids = this.serializeIds(ids);
 
     this.ajax(this.buildURL(root), "GET", {
       data: {ids: ids},
       success: function(json) {
-        this.didFindMany(store, type, json);
+        Ember.run(this, function(){
+          this.didFindMany(store, type, json);
+        });
       }
     });
   },
 
-  didFindMany: function(store, type, json) {
-    var root = this.pluralize(this.rootForType(type));
+  /**
+    @private
 
-    this.sideload(store, type, json, root);
-    store.loadMany(type, json[root]);
+    This method serializes a list of IDs using `serializeId`
+
+    @returns {Array} an array of serialized IDs
+  */
+  serializeIds: function(ids) {
+    var serializer = get(this, 'serializer');
+
+    return Ember.EnumerableUtils.map(ids, function(id) {
+      return serializer.serializeId(id);
+    });
   },
 
   didError: function(store, type, record, xhr) {
@@ -6274,27 +7740,8 @@ DS.RESTAdapter = DS.Adapter.extend({
       var data = JSON.parse(xhr.responseText);
       store.recordWasInvalid(record, data['errors']);
     } else {
-      store.recordWasError(record);
+      this._super.apply(this, arguments);
     }
-  },
-
-  // HELPERS
-
-  plurals: {},
-
-  // define a plurals hash in your subclass to define
-  // special-case pluralization
-  pluralize: function(name) {
-    return this.plurals[name] || name + "s";
-  },
-
-  rootForType: function(type) {
-    if (type.url) { return type.url; }
-
-    // use the last part of the name as the URL
-    var parts = type.toString().split(".");
-    var name = parts[parts.length - 1];
-    return name.replace(/([A-Z])/g, '_$1').toLowerCase().slice(1);
   },
 
   ajax: function(url, type, hash) {
@@ -6311,60 +7758,17 @@ DS.RESTAdapter = DS.Adapter.extend({
     jQuery.ajax(hash);
   },
 
-  sideload: function(store, type, json, root) {
-    var sideloadedType, mappings, loaded = {};
-
-    loaded[root] = true;
-
-    for (var prop in json) {
-      if (!json.hasOwnProperty(prop)) { continue; }
-      if (prop === root) { continue; }
-      if (prop === get(this, 'meta')) { continue; }
-
-      sideloadedType = type.typeForAssociation(prop);
-
-      if (!sideloadedType) {
-        mappings = get(this, 'mappings');
-        Ember.assert("Your server returned a hash with the key " + prop + " but you have no mappings", !!mappings);
-
-        sideloadedType = get(mappings, prop);
-
-        if (typeof sideloadedType === 'string') {
-          sideloadedType = get(window, sideloadedType);
-        }
-
-        Ember.assert("Your server returned a hash with the key " + prop + " but you have no mapping for it", !!sideloadedType);
-      }
-
-      this.sideloadAssociations(store, sideloadedType, json, prop, loaded);
-    }
-  },
-
-  sideloadAssociations: function(store, type, json, prop, loaded) {
-    loaded[prop] = true;
-
-    get(type, 'associationsByName').forEach(function(key, meta) {
-      key = meta.key || key;
-      if (meta.kind === 'belongsTo') {
-        key = this.pluralize(key);
-      }
-      if (json[key] && !loaded[key]) {
-        this.sideloadAssociations(store, meta.type, json, key, loaded);
-      }
-    }, this);
-
-    this.loadValue(store, type, json[prop]);
-  },
-
-  loadValue: function(store, type, value) {
-    if (value instanceof Array) {
-      store.loadMany(type, value);
-    } else {
-      store.load(type, value);
-    }
-  },
-
   url: "",
+
+  rootForType: function(type) {
+    var serializer = get(this, 'serializer');
+    return serializer.rootForType(type);
+  },
+
+  pluralize: function(string) {
+    var serializer = get(this, 'serializer');
+    return serializer.pluralize(string);
+  },
 
   buildURL: function(record, suffix) {
     var url = [this.url];
@@ -6385,22 +7789,10 @@ DS.RESTAdapter = DS.Adapter.extend({
     return url.join("/");
   },
 
-  meta: 'meta',
-  since: 'since',
-
   sinceQuery: function(since) {
     var query = {};
     query[get(this, 'since')] = since;
     return since ? query : null;
-  },
-
-  extractSince: function(json) {
-    var meta = this.extractMeta(json);
-    return meta[get(this, 'since')] || null;
-  },
-
-  extractMeta: function(json) {
-    return json[get(this, 'meta')] || {};
   }
 });
 

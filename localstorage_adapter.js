@@ -46,9 +46,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
     var namespace = this._namespaceForType(type);
     this._async(function(){
       var copy = Ember.copy(namespace.records[id]);
-      Ember.run(this, function() {
-        this.didFindRecord(store, type, copy, id);
-      });
+      this.didFindRecord(store, type, copy, id);
     });
   },
 
@@ -59,9 +57,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
       for (var i = 0; i < ids.length; i++) {
         results.push(Ember.copy(namespace.records[ids[i]]));
       }
-      Ember.run(this, function() {
-        this.didFindMany(store, type, results);
-      });
+      this.didFindMany(store, type, results);
     });
   },
 
@@ -83,9 +79,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
     var namespace = this._namespaceForType(type);
     this._async(function() {
       var results = this.query(namespace.records, query);
-      Ember.run(this, function() {
-        this.didFindQuery(store, type, results, recordArray);
-      });
+      this.didFindQuery(store, type, results, recordArray);
     });
   },
 
@@ -117,9 +111,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
       for (var id in namespace.records) {
         results.push(Ember.copy(namespace.records[id]));
       }
-      Ember.run(this, function() {
-        this.didFindAll(store, type, results);
-      });
+      this.didFindAll(store, type, results);
     });
   },
 
@@ -178,14 +170,10 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
   _didSaveRecords: function(store, type, records) {
     var success = this._saveData();
     if (success) {
-      Ember.run(function() {
-        store.didSaveRecords(records);
-      });
+      store.didSaveRecords(records);
     } else {
       records.forEach(function(record) {
-        Ember.run(function() {
-          store.recordWasError(record);
-        });
+        store.recordWasError(record);
       });
       this.trigger('QUOTA_EXCEEDED_ERR', records);
     }
@@ -218,7 +206,9 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 
   _async: function(callback) {
     var _this = this;
-    setTimeout(function(){ callback.call(_this);}, 1);
+    setTimeout(function(){
+      Ember.run(_this, callback);
+    }, 1);
   }
 
 });

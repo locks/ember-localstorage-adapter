@@ -87,20 +87,30 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
     var results = [];
     var id, record, property, test, push;
     for (id in records) {
+      //console.log("testing order " + id);
       record = records[id];
+
+      push = true;
+
       for (property in query) {
         test = query[property];
-        push = false;
         if (Object.prototype.toString.call(test) == '[object RegExp]') {
-          push = test.test(record[property]);
+          thisTestPass = test.test(record[property]);
         } else {
-          push = record[property] === test;
+          //console.log("Prop: " + property + " Test: " + test + " EQ: " + (record[property] === test));
+          thisTestPass = record[property] === test;
+        }
+
+        if(!thisTestPass) {
+          push = false;
         }
       }
+
       if (push) {
         results.push(record);
       }
     }
+    //console.log(results[0]);
     return results;
   },
 

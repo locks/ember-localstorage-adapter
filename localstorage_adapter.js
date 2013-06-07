@@ -33,6 +33,7 @@ DS.LSSerializer = DS.JSONSerializer.extend({
 DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 
   init: function() {
+    this._super();
     this._loadData();
   },
 

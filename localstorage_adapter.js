@@ -31,8 +31,13 @@ DS.LSSerializer = DS.JSONSerializer.extend({
 });
 
 DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
+  // set this to true on creation to reset the localStorage
+  resetLocalStorage: false,
 
   init: function() {
+    if (this.resetLocalStorage) {
+      this._resetLocalStorage();
+    }
     this._loadData();
   },
 
@@ -165,6 +170,10 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
   _loadData: function() {
     var storage = localStorage.getItem(this._getNamespace());
     this._data = storage ? JSON.parse(storage) : {};
+  },
+
+  _resetLocalStorage: function() {
+    localStorage.clear();
   },
 
   _didSaveRecords: function(store, type, records) {

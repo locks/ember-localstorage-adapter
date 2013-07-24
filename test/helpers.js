@@ -138,7 +138,9 @@ function occupyLocalStorage() {
     try {
       localStorage.setItem('junk', item);
     } catch(error) {
-      if (error.name === 'QUOTA_EXCEEDED_ERR') {
+      // Handling the case where Chrome 28 reports the error.name as 'QuotaExceededError'.
+      var name = error.name.toUpperCase();
+      if (name === 'QUOTA_EXCEEDED_ERR' || name === 'QUOTAEXCEEDEDERROR') {
         return false;
       }
     }

@@ -177,6 +177,7 @@ test('QUOTA_EXCEEDED_ERR when storage is full', function() {
   occupyLocalStorage();
   var handler = sinon.spy();
   adapter.on('QUOTA_EXCEEDED_ERR', handler);
+  adapter.on('QuotaExceededError', handler);
 
   list = List.createRecord({name: n100k});
 

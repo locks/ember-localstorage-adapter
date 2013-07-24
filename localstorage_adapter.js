@@ -175,7 +175,11 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
       records.forEach(function(record) {
         store.recordWasError(record);
       });
+      /* RunnerRick - Not sure if both of these events should be triggered
+          or if some object detection is necessary to decide. */
       this.trigger('QUOTA_EXCEEDED_ERR', records);
+      // Handling the case where Chrome 28 reports the error.name as 'QuotaExceededError'.
+      this.trigger('QuotaExceededError', records);
     }
   },
 
@@ -184,7 +188,9 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
       localStorage.setItem(this._getNamespace(), JSON.stringify(this._data));
       return true;
     } catch(error) {
-      if (error.name == 'QUOTA_EXCEEDED_ERR') {
+      // Handling the case where Chrome 28 reports the error.name as 'QuotaExceededError'.
+      var name = error.name.toUpperCase();
+      if (name === 'QUOTA_EXCEEDED_ERR' || name === 'QUOTAEXCEEDEDERROR') {
         return false;
       } else {
         throw new Error(error);

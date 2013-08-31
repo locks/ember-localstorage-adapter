@@ -2,9 +2,9 @@
   "name": "ember-localstorage-adapter",
   "author": "Ryan Florence",
   "main": "localstorage_adapter.js",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "dependencies": {
-    "ember": "~1.0.0-rc.1",
+    "ember": "~1.0.0",
     "ember-data": "latest"
   },
   "ignore": [

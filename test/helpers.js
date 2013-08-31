@@ -19,9 +19,13 @@ var FIXTURES = {
 
 function assertStoredList(l) {
   l = l || list;
-  var storedList = getStoredList(l.get('id'));
-  deepEqual(storedList, l.serialize({includeId: true}),
-            'list data matches stored list');
+  l.then(function(l){
+    console.log(l.get('items'));
+    var storedList = getStoredList(l.get('id'));
+    deepEqual(storedList, l.serialize({includeId: true}),
+              'list data matches stored list');
+    start();
+  });
 }
 
 function assertStoredLists(ls) {

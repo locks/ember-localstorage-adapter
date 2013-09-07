@@ -15,11 +15,11 @@ Usage
 Include `localstorage_adapter.js` in your app and then like all adapters:
 
 ```js
-App.store = DS.Store.create({
-  revision: 11,
-  adapter: DS.LSAdapter.create()
+App.LSAdapter = DS.LSAdapter.extend({
+	namespace: 'app_namespace'
 });
 
+App.ApplicationAdapter = DS.LSAdapter;
 ```
 
 ### Local Storage Namespace

@@ -86,7 +86,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 	updateRecord: function (store, type, record) {
 		var namespace = this._namespaceForType(type);
 		var id = record.get('id');
-		namespace.records[id] = record.toJSON({ includeId: true });
+		namespace.records[id] = record.serialize({ includeId: true });
 		this._saveData();
 		return Ember.RSVP.resolve();
 	},

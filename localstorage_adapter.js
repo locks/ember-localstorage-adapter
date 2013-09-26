@@ -111,7 +111,8 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 	},
 
 	_saveData: function () {
-		localStorage.setItem(this._getNamespace(), JSON.stringify(this._data));
+		var fixedJson = this._newStringify(this._data, this._newStringify);
+		localStorage.setItem(this._getNamespace(), fixedJson);
 	},
 
 	_namespaceForType: function (type) {
@@ -124,5 +125,37 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 	_addRecordToNamespace: function (namespace, record) {
 		var data = record.serialize({includeId: true});
 		namespace.records[data.id] = data;
+	},
+
+	/* Stringify an object, but replace Arrays of embedded objects with Arrays of IDs */
+	_newStringify: function(obj, newStringify) {
+		var arr = [];
+		$.each( obj, function( key, val ) {
+			var newVal;
+			if ($.isArray(val)) {
+				var newArr = [];
+				$.each(val, function(k,v) {
+					if (v.id) {
+						newArr.push(v.id);
+					} else {
+						newArr.push(v);
+					}
+				});
+				newVal = JSON.stringify(newArr);
+			}
+			
+			if ($.isPlainObject(val)) {
+				val = newStringify(val, newStringify);
+			} else if (newVal) {
+				val = newVal;
+			} else {
+				val = '"' + val + '"';
+			}
+	
+			var next = '"' + key + '":' + val;	
+
+			arr.push(next);
+		});
+		return '{' +  arr.join(',') + '}';
 	}
 });

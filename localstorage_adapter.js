@@ -2,6 +2,8 @@
 /*global DS*/
 'use strict';
 
+window.console || (console = { log: function () { } });
+
 DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 
 	init: function () {
@@ -106,12 +108,24 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 	},
 
 	_loadData: function () {
+	    if ("localStorage" in window && window["localStorage"] != null) {
+	        // Local storage supported
 		var storage = localStorage.getItem(this._getNamespace());
 		this._data = storage ? JSON.parse(storage) : {};
+	    }
+	    else {
+	        console.log('_loadData: Local storage not supported - are you running in IE using file://? Try http:// or FireFox.');
+	    }
 	},
 
 	_saveData: function () {
+	    if ("localStorage" in window && window["localStorage"] != null) {
+	        // Local storage supported
 		localStorage.setItem(this._getNamespace(), JSON.stringify(this._data));
+	    }
+	    else {
+	        console.log('_saveData: Local storage not supported - are you running in IE using file://? Try http:// or FireFox.');
+	    }
 	},
 
 	_namespaceForType: function (type) {

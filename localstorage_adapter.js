@@ -8,13 +8,19 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 		this._loadData();
 	},
 
-	generateIdForRecord: function () {
-		return Math.random().toString(32).slice(2).substr(0, 5);
-	},
+  /**
+    This is the main entry point into finding records. The first parameter to
+    this method is the model's name as a string.
 
+    @method find
+    @param {DS.Model} type
+    @param {Object|String|Integer|null} id
+  */
 	find: function (store, type, id) {
-		var namespace = this._namespaceForType(type);
-		return Ember.RSVP.resolve(Ember.copy(namespace.records[id]));
+		var namespace = this._namespaceForType(type),
+        record = Ember.A(namespace.records[id]);
+
+		return Ember.RSVP.resolve(record);
 	},
 
 	findMany: function (store, type, ids) {
@@ -41,8 +47,9 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
   //
   //    { complete: true, name: /foo|bar/ }
 	findQuery: function (store, type, query, recordArray) {
-		var namespace = this._namespaceForType(type);
-		var results = this.query(namespace.records, query);
+		var namespace = this._namespaceForType(type),
+		    results = this.query(namespace.records, query);
+
 		return Ember.RSVP.resolve(results);
 	},
 
@@ -77,10 +84,13 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 	},
 
 	createRecord: function (store, type, record) {
-		var namespace = this._namespaceForType(type);
-		this._addRecordToNamespace(namespace, record);
+		var namespace = this._namespaceForType(type),
+		    recordHash = record.serialize({includeId: true});
+
+		namespace.records[recordHash.id] = recordHash;
+
 		this._saveData();
-		return Ember.RSVP.resolve();
+		return Ember.RSVP.resolve(record);
 	},
 
 	updateRecord: function (store, type, record) {
@@ -97,6 +107,10 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 		delete namespace.records[id];
 		this._saveData();
 		return Ember.RSVP.resolve();
+	},
+
+	generateIdForRecord: function () {
+		return Math.random().toString(32).slice(2).substr(0, 5);
 	},
 
   // private
@@ -120,9 +134,4 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 			this._data[namespace] = {records: {}}
 		);
 	},
-
-	_addRecordToNamespace: function (namespace, record) {
-		var data = record.serialize({includeId: true});
-		namespace.records[data.id] = data;
-	}
 });

@@ -124,8 +124,8 @@ test('findAll', function() {
   });
 });
 
-test('createRecords', function() {
-  expect(3);
+test('createRecord', function() {
+  expect(5);
   stop();
   list = store.createRecord('list', { name: 'Rambo' });
 
@@ -136,8 +136,15 @@ test('createRecords', function() {
       equal(get(records, 'length'), 1, "Only Rambo was found");
       equal(get(record,  'name'),  "Rambo", "Correct name");
       equal(get(record,  'id'),    list.id, "Correct, original id");
+    });
 
-      start();
+    list.save().then(function() {
+      store.find('list', list.id).then(function(record) {
+        equal(get(record,  'name'),  "Rambo", "Correct name");
+        equal(get(record,  'id'),    list.id, "Correct, original id");
+
+        start();
+      });
     });
   });
 });
@@ -171,44 +178,87 @@ test('updateRecords', function() {
              .then(AssertListIsUpdated);
 });
 
-test('deleteRecords', function() {
-  createAndSaveNewList();
+test('deleteRecord', function() {
+  expect(2);
+  stop();
+  var AssertListIsDeleted = function() {
+    return store.findQuery('list', { name: 'one' }).then(function(records) {
+      equal(get(records, 'length'), 0, "No record was found");
+      start();
+    });
+  }
 
-  list.deleteRecord();
-  assertState('deleted');
+  store.findQuery('list', { name: 'one' }).then(function(lists) {
+    var list = lists.objectAt(0);
 
-  commit();
+    equal(get(list, "id"), "l1", "Item exists");
 
-  assertState('deleted');
-  assertListNotFoundInStorage();
-
-  lists = store.findAll(List);
-  clock.tick(1);
-
-  assertListsLength(3);
+    list.deleteRecord();
+    list.on("didDelete", AssertListIsDeleted);
+    list.save();
+  });
 });
 
-test('bulkCommits changes', function() {
-  var listToUpdate = List.find('l1');
-  var listToDelete = List.find('l2');
-  List.createRecord({name: 'bulk new'}); // will find later
+test('changes in bulk', function() {
+  stop();
+  var promises,
+      listToUpdate = store.find('list', 'l1'),
+      listToDelete = store.find('list', 'l2'),
+      listToCreate = store.createRecord('list', { name: 'Rambo' });
 
-  clock.tick(1);
+  var UpdateList = function(list) {
+    list.set('name', 'updated');
+    return list;
+  }
+  var DeleteList = function(list) {
+    list.deleteRecord();
+    return list;
+  }
 
-  listToUpdate.set('name', 'updated');
-  listToDelete.deleteRecord();
+  promises = [
+    listToCreate,
+    listToUpdate.then(UpdateList),
+    listToDelete.then(DeleteList),
+  ];
 
-  commit();
+  Ember.RSVP.all(promises).then(function(lists) {
+    promises = Ember.A();
 
-  var updatedList = List.find('l1');
-  var newListQuery = store.findQuery(List, {name: 'bulk new'});
-  clock.tick(1);
-  var newList = newListQuery.objectAt(0);
+    lists.forEach(function(list) {
+      promises.push(list.save());
+    });
 
-  assertState('deleted', true, listToDelete);
-  assertListNotFoundInStorage(listToDelete);
-  assertStoredList(updatedList);
-  assertStoredList(newList);
+    return promises;
+  }).then(function() {
+    var updatedList = store.find('list', 'l1'),
+        createdList = store.findQuery('list', {name: 'Rambo'}),
+        promises    = Ember.A();
+
+    createdList.then(function(lists) {
+      equal(get(lists, 'length'), 1, "Record was created successfully");
+      promises.push(Ember.RSVP.Promise());
+    });
+
+    store.find('list', 'l2').then(function(list) {
+      equal(get(list, 'length'), undefined, "Record was deleted successfully");
+      promises.push(Ember.RSVP.Promise());
+    });
+
+    updatedList.then(function(list) {
+      equal(get(list, 'name'), 'updated', "Record was updated successfully");
+      promises.push(Ember.RSVP.Promise());
+    });
+
+    Ember.RSVP.all(promises).then(function() {
+      start();
+    });
+  });
+
+
+  // assertState('deleted', true, listToDelete);
+  // assertListNotFoundInStorage(listToDelete);
+  // assertStoredList(updatedList);
+  // assertStoredList(newList);
 });
 
 test('load hasMany association', function() {

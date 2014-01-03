@@ -17,6 +17,13 @@ var FIXTURES = {
   }
 };
 
+var logLS = function() {
+  console.log(localStorage.getItem('DS.LSAdapter'));
+}
+
+var cl = function(msg) { console.log(msg); }
+var ct = function(msg) { console.table(msg); }
+
 var setupStore = function(options) {
   var env = {};
   options = options || {};
@@ -142,7 +149,7 @@ function commit() {
 }
 
 function createList() {
-  list = List.createRecord({ name: 'Rambo' });
+  List.createRecord({ name: 'Rambo' });
   commit();
   assertStoredList();
 }

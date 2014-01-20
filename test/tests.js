@@ -286,7 +286,9 @@ test('saves belongsTo and hasMany associations', function() {
   // assertListHasItem(list, item);
 });
 
-
+// This crashes chrome.
+// TODO: Figure out a way to test this without using so much memory.
+//
 // test('QUOTA_EXCEEDED_ERR when storage is full', function() {
 //   occupyLocalStorage();
 //   var handler = sinon.spy();

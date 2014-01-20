@@ -43,24 +43,14 @@ test('existence', function() {
   ok(DS.LSAdapter, 'LSAdapter added to DS namespace');
 });
 
-test('should find list and then its items asynchronously', function() {
-  expect(7);
+test('find with id', function() {
+  expect(3);
 
   stop();
   store.find('list', 'l1').then(function(list) {
     equal(get(list, 'id'),   'l1',  'id is loaded correctly');
     equal(get(list, 'name'), 'one', 'name is loaded correctly');
     equal(get(list, 'b'),    true,  'b is loaded correctly');
-    return list.get('items');
-  }).then(function(items) {
-    var item1 = items.get('firstObject'),
-        item2 = items.get('lastObject');
-
-    equal(get(item1, 'id'),   'i1',  'first item id is loaded correctly');
-    equal(get(item1, 'name'), 'one', 'first item name is loaded correctly');
-    equal(get(item2, 'id'),   'i2',  'first item id is loaded correctly');
-    equal(get(item2, 'name'), 'two', 'first item name is loaded correctly');
-
     start();
   });
 });
@@ -262,17 +252,23 @@ test('changes in bulk', function() {
 });
 
 test('load hasMany association', function() {
-  list = List.find('l1');
-  clock.tick(1);
+  expect(4);
+  stop();
 
-  assertStoredList();
+  store.find('list', 'l1').then(function(list) {
+    return list.get('items');
+  }).then(function(items) {
+    var item1 = items.get('firstObject'),
+        item2 = items.get('lastObject');
 
-  items = list.get('items');
-  clock.tick(1);
+    equal(get(item1, 'id'),   'i1',  'first item id is loaded correctly');
+    equal(get(item1, 'name'), 'one', 'first item name is loaded correctly');
+    equal(get(item2, 'id'),   'i2',  'first item id is loaded correctly');
+    equal(get(item2, 'name'), 'two', 'first item name is loaded correctly');
 
-  assertStoredItems();
+    start();
+  });
 });
-
 
 test('load belongsTo association', function() {
   stop();

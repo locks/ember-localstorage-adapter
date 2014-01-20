@@ -244,7 +244,7 @@ test('changes in bulk', function() {
   // assertStoredList(newList);
 });
 
-test('load hasMany association', function() {
+test('load hasMany association on {async: true}', function() {
   expect(4);
   stop();
 
@@ -263,7 +263,7 @@ test('load hasMany association', function() {
   });
 });
 
-test('load belongsTo association', function() {
+test('load belongsTo association on {async: true}', function() {
   stop();
 
   store.find('item', 'i1').then(function(item) {

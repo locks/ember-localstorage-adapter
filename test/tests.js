@@ -25,7 +25,7 @@ module('DS.LSAdapter', {
 
     App.Item = DS.Model.extend({
       name: DS.attr('string'),
-      list: DS.belongsTo('list')
+      list: DS.belongsTo('list', {async: true })
     });
 
     App.Item.toString = stringify('App.Item');
@@ -273,13 +273,18 @@ test('load hasMany association', function() {
   assertStoredItems();
 });
 
-test('load belongsTo association', function() {
-  item = Item.find('i1');
-  clock.tick(1);
-  list = item.get('list');
-  clock.tick(1);
 
-  assertStoredList();
+test('load belongsTo association', function() {
+  stop();
+
+  store.find('item', 'i1').then(function(item) {
+    return item.get('list');
+  }).then(function(list) {
+    equal(get(list, 'id'), 'l1', "id is loaded correctly");
+    equal(get(list, 'name'), 'one', "name is loaded correctly");
+
+    start();
+  });
 });
 
 test('saves belongsTo and hasMany associations', function() {
@@ -292,24 +297,25 @@ test('saves belongsTo and hasMany associations', function() {
   assertListHasItem(list, item);
 });
 
+
 // test('QUOTA_EXCEEDED_ERR when storage is full', function() {
 //   occupyLocalStorage();
 //   var handler = sinon.spy();
 //   adapter.on('QUOTA_EXCEEDED_ERR', handler);
-// 
+//
 //   list = List.createRecord({name: n100k});
-// 
+//
 //   assertState('new');
 //   store.commit();
 //   assertState('saving');
-// 
+//
 //   clock.tick(1);
-// 
+//
 //   assertState('saving', false);
 //   assertState('error');
 //   equal(handler.getCall(0).args[0].list[0], list,
 //         'error handler called with record not saved');
-// 
+//
 //   // clean up
 //   localStorage.removeItem('junk');
 // });

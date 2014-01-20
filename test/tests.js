@@ -55,13 +55,6 @@ test('find with id', function() {
   });
 });
 
-// 1. findMany is a private method
-// 2. DS.FixtureAdapter doesn't test it directly
-// test('findMany', function() {
-//   lists = store.findMany('list', Ember.A(['l1', 'l3']), App.List);
-//   //assertStoredLists();
-// });
-
 test('findQuery', function() {
 
   stop();

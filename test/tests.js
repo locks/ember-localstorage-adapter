@@ -25,7 +25,7 @@ module('DS.LSAdapter', {
 
     App.Item = DS.Model.extend({
       name: DS.attr('string'),
-      list: DS.belongsTo('list', {async: true })
+      list: DS.belongsTo('list', {async: true}) // Is this necessary? I don't know
     });
 
     App.Item.toString = stringify('App.Item');
@@ -263,11 +263,11 @@ test('load hasMany association on {async: true}', function() {
   });
 });
 
-test('load belongsTo association on {async: true}', function() {
+test('load belongsTo association', function() {
   stop();
 
   store.find('item', 'i1').then(function(item) {
-    return item.get('list');
+    return Ember.RSVP.Promise(function(resolve) { resolve(get(item, 'list')); });
   }).then(function(list) {
     equal(get(list, 'id'), 'l1', "id is loaded correctly");
     equal(get(list, 'name'), 'one', "name is loaded correctly");
@@ -276,14 +276,30 @@ test('load belongsTo association on {async: true}', function() {
   });
 });
 
-test('saves belongsTo and hasMany associations', function() {
-  list = List.find('l1');
-  clock.tick(1);
-  item = Item.createRecord({name: '3', list: list});
-  // commit();
+test('saves belongsTo', function() {
+  stop();
+  var listId = 'l2';
 
-  // assertItemBelongsToList(item, list);
-  // assertListHasItem(list, item);
+  store.find('list', listId).then(function(list) {
+    // create and store a new item
+    itemParams = { name: 'three', list: list };
+    item = store.createRecord('item', itemParams);
+
+    // When the list is saved (async)
+    return item.save();
+  }).then(function(item) {
+    // reload the item
+    return store.find('item', get(item, 'id'));
+  }).then(function(item) {
+    // follow the association
+    return get(item, 'list')
+  }).then(function(list) {
+    equal(get(list, 'id'), listId, 'list is retrieved correctly');
+    start();
+  });
+});
+
+test('saves hasMany', function() {
 });
 
 // This crashes chrome.

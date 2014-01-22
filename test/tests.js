@@ -2,9 +2,7 @@
 var get = Ember.get,
     App = {};
 
-var list, lists,
-    item, items,
-    store, adapter, clock, container;
+var store;
 
 function stringify(string){
   return function(){ return string };
@@ -18,7 +16,7 @@ module('DS.LSAdapter', {
     App.List = DS.Model.extend({
       name: DS.attr('string'),
       b: DS.attr('boolean'),
-      items: DS.hasMany('item', {async: true})
+      items: DS.hasMany('item')
     });
 
     App.List.toString = stringify('App.List');
@@ -41,36 +39,20 @@ module('DS.LSAdapter', {
 
 test('existence', function() {
   ok(DS.LSAdapter, 'LSAdapter added to DS namespace');
+  ok(DS.LSSerializer, 'LSSerializer added to DS namespace');
 });
 
-test('should find list and then its items asynchronously', function() {
-  expect(7);
+test('find with id', function() {
+  expect(3);
 
   stop();
   store.find('list', 'l1').then(function(list) {
     equal(get(list, 'id'),   'l1',  'id is loaded correctly');
     equal(get(list, 'name'), 'one', 'name is loaded correctly');
     equal(get(list, 'b'),    true,  'b is loaded correctly');
-    return list.get('items');
-  }).then(function(items) {
-    var item1 = items.get('firstObject'),
-        item2 = items.get('lastObject');
-
-    equal(get(item1, 'id'),   'i1',  'first item id is loaded correctly');
-    equal(get(item1, 'name'), 'one', 'first item name is loaded correctly');
-    equal(get(item2, 'id'),   'i2',  'first item id is loaded correctly');
-    equal(get(item2, 'name'), 'two', 'first item name is loaded correctly');
-
     start();
   });
 });
-
-// 1. findMany is a private method
-// 2. DS.FixtureAdapter doesn't test it directly
-// test('findMany', function() {
-//   lists = store.findMany('list', Ember.A(['l1', 'l3']), App.List);
-//   //assertStoredLists();
-// });
 
 test('findQuery', function() {
 
@@ -262,54 +244,85 @@ test('changes in bulk', function() {
 });
 
 test('load hasMany association', function() {
-  list = List.find('l1');
-  clock.tick(1);
+  expect(4);
+  stop();
 
-  assertStoredList();
+  store.find('list', 'l1').then(function(list) {
+    debugger
+    var items = list.get('items');
 
-  items = list.get('items');
-  clock.tick(1);
+    var item1 = items.get('firstObject'),
+        item2 = items.get('lastObject');
 
-  assertStoredItems();
+    equal(get(item1, 'id'),   'i1',  'first item id is loaded correctly');
+    equal(get(item1, 'name'), 'one', 'first item name is loaded correctly');
+    equal(get(item2, 'id'),   'i2',  'first item id is loaded correctly');
+    equal(get(item2, 'name'), 'two', 'first item name is loaded correctly');
+
+    start();
+  });
 });
 
 test('load belongsTo association', function() {
-  item = Item.find('i1');
-  clock.tick(1);
-  list = item.get('list');
-  clock.tick(1);
+  stop();
 
-  assertStoredList();
+  store.find('item', 'i1').then(function(item) {
+    return Ember.RSVP.Promise(function(resolve) { resolve(get(item, 'list')); });
+  }).then(function(list) {
+    equal(get(list, 'id'), 'l1', "id is loaded correctly");
+    equal(get(list, 'name'), 'one', "name is loaded correctly");
+
+    start();
+  });
 });
 
-test('saves belongsTo and hasMany associations', function() {
-  list = List.find('l1');
-  clock.tick(1);
-  item = Item.createRecord({name: '3', list: list});
-  commit();
+test('saves belongsTo', function() {
+  stop();
+  var listId = 'l2';
 
-  assertItemBelongsToList(item, list);
-  assertListHasItem(list, item);
+  store.find('list', listId).then(function(list) {
+    // create and store a new item
+    itemParams = { name: 'three', list: list };
+    item = store.createRecord('item', itemParams);
+
+    // When the list is saved (async)
+    return item.save();
+  }).then(function(item) {
+    // reload the item
+    return store.find('item', get(item, 'id'));
+  }).then(function(item) {
+    // follow the association
+    return get(item, 'list')
+  }).then(function(list) {
+    equal(get(list, 'id'), listId, 'list is retrieved correctly');
+    start();
+  });
 });
 
+test('saves hasMany', function() {
+});
+
+// This crashes chrome.
+// TODO: Figure out a way to test this without using so much memory.
+//
 // test('QUOTA_EXCEEDED_ERR when storage is full', function() {
 //   occupyLocalStorage();
 //   var handler = sinon.spy();
 //   adapter.on('QUOTA_EXCEEDED_ERR', handler);
-// 
+//
 //   list = List.createRecord({name: n100k});
-// 
+//
 //   assertState('new');
 //   store.commit();
 //   assertState('saving');
-// 
+//
 //   clock.tick(1);
-// 
+//
 //   assertState('saving', false);
 //   assertState('error');
 //   equal(handler.getCall(0).args[0].list[0], list,
 //         'error handler called with record not saved');
-// 
+//
 //   // clean up
 //   localStorage.removeItem('junk');
 // });

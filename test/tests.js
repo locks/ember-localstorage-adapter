@@ -2,9 +2,7 @@
 var get = Ember.get,
     App = {};
 
-var list, lists,
-    item, items,
-    store, adapter, clock, container;
+var store;
 
 function stringify(string){
   return function(){ return string };
@@ -18,14 +16,14 @@ module('DS.LSAdapter', {
     App.List = DS.Model.extend({
       name: DS.attr('string'),
       b: DS.attr('boolean'),
-      items: DS.hasMany('item', {async: true})
+      items: DS.hasMany('item')
     });
 
     App.List.toString = stringify('App.List');
 
     App.Item = DS.Model.extend({
       name: DS.attr('string'),
-      list: DS.belongsTo('list', {async: true}) // Is this necessary? I don't know
+      list: DS.belongsTo('list')
     });
 
     App.Item.toString = stringify('App.Item');
@@ -41,6 +39,7 @@ module('DS.LSAdapter', {
 
 test('existence', function() {
   ok(DS.LSAdapter, 'LSAdapter added to DS namespace');
+  ok(DS.LSSerializer, 'LSSerializer added to DS namespace');
 });
 
 test('find with id', function() {
@@ -244,13 +243,14 @@ test('changes in bulk', function() {
   // assertStoredList(newList);
 });
 
-test('load hasMany association on {async: true}', function() {
+test('load hasMany association', function() {
   expect(4);
   stop();
 
   store.find('list', 'l1').then(function(list) {
-    return list.get('items');
-  }).then(function(items) {
+    debugger
+    var items = list.get('items');
+
     var item1 = items.get('firstObject'),
         item2 = items.get('lastObject');
 

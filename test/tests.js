@@ -276,29 +276,50 @@ test('load belongsTo association', function() {
 });
 
 test('saves belongsTo', function() {
+  var item,
+      listId = 'l2';
+
   stop();
-  var listId = 'l2';
 
   store.find('list', listId).then(function(list) {
-    // create and store a new item
-    itemParams = { name: 'three', list: list };
-    item = store.createRecord('item', itemParams);
+    item = store.createRecord('item', { name: 'three thousand' });
+    item.set('list', list);
 
-    // When the list is saved (async)
     return item.save();
   }).then(function(item) {
-    // reload the item
-    return store.find('item', get(item, 'id'));
+    store.unloadAll('item');
+    return store.find('item', item.get('id'));
   }).then(function(item) {
-    // follow the association
-    return get(item, 'list')
-  }).then(function(list) {
-    equal(get(list, 'id'), listId, 'list is retrieved correctly');
+    var list = item.get('list');
+    ok(item.get('list'), 'list is present');
+    equal(list.id, listId, 'list is retrieved correctly');
     start();
   });
 });
 
 test('saves hasMany', function() {
+  var item, list,
+      listId = 'l2';
+
+  stop();
+
+  store.find('list', listId).then(function(list) {
+    item = store.createRecord('item', { name: 'three thousand' });
+    list.get('items').pushObject(item);
+
+    return list.save();
+  }).then(function(list) {
+    return item.save();
+  }).then(function(item) {
+    store.unloadAll('list');
+    return store.find('list', listId);
+  }).then(function(list) {
+    var items = list.get('items'),
+        item1 = items.objectAt(0);
+
+    equal(item1.get('name'), 'three thousand', 'item is saved');
+    start();
+  });
 });
 
 // This crashes chrome.

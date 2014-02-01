@@ -4,6 +4,18 @@
 
 DS.LSSerializer = DS.JSONSerializer.extend({
 
+  serializeHasMany: function(record, json, relationship) {
+    var key = relationship.key,
+        relationshipType = DS.RelationshipChange.determineRelationshipType(record.constructor, relationship);
+
+    if (relationshipType === 'manyToNone' ||
+        relationshipType === 'manyToMany' ||
+        relationshipType === 'manyToOne') {
+      json[key] = record.get(key).mapBy('id');
+    // TODO support for polymorphic manyToNone and manyToMany relationships
+    }
+  },
+
   extractSingle: function(store, type, payload) {
     if (payload && payload._embedded) {
       for (var relation in payload._embedded) {
@@ -152,7 +164,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
     var namespaceRecords = this._namespaceForType(type),
         id = record.get('id');
 
-    namespaceRecords.records[id] = record.toJSON({ includeId: true });
+    namespaceRecords.records[id] = record.serialize({ includeId: true });
 
     this.persistData(type, namespaceRecords);
     return Ember.RSVP.resolve();

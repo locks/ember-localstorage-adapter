@@ -248,7 +248,6 @@ test('load hasMany association', function() {
   stop();
 
   store.find('list', 'l1').then(function(list) {
-    debugger
     var items = list.get('items');
 
     var item1 = items.get('firstObject'),

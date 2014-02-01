@@ -256,9 +256,8 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
           relationshipPromises = [];
 
       relationshipNames = Ember.get(type, 'relationshipNames');
-      relationships = Ember.A(relationshipNames.belongsTo);
-      relationships.concat.apply(relationships, relationshipNames.hasMany);
-
+      relationships = relationshipNames.belongsTo;
+      relationships = relationships.concat(relationshipNames.hasMany);
 
       relationships.forEach(function(relationName) {
         var relationModel = type.typeForRelationship(relationName),

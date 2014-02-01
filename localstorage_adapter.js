@@ -179,7 +179,8 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
   },
 
   loadData: function () {
-    return JSON.parse(localStorage.getItem(this.adapterNamespace()));
+    var storage = localStorage.getItem(this.adapterNamespace());
+    return storage ? JSON.parse(storage) : {};
   },
 
   persistData: function(type, data) {
@@ -195,7 +196,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
     var namespace = this.modelNamespace(type),
         storage   = localStorage.getItem(this.adapterNamespace());
 
-    return JSON.parse(storage)[namespace] || {records: {}};
+    return storage ? JSON.parse(storage)[namespace] : {records: {}};
   },
 
   modelNamespace: function(type) {

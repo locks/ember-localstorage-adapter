@@ -1,47 +1,58 @@
 // global variables
 var List, list, lists,
     Item, item, items,
-    store, adapter, clock;
+    store, adapter, clock, container;
+
+function stringify(string){
+  return function(){ return string };
+}
 
 module('DS.LSAdapter', {
 
   setup: function() {
     localStorage.setItem('DS.LSAdapter', JSON.stringify(FIXTURES));
+    var env = {};
 
     List = DS.Model.extend({
       name: DS.attr('string'),
-      b: DS.attr('boolean')
+      b: DS.attr('boolean'),
+      items: DS.hasMany('item')
     });
 
-    List.toString = function() {
-      return 'App.List';
-    };
+    List.toString = stringify('App.List');
 
     Item = DS.Model.extend({
-      name: DS.attr('string')
+      name: DS.attr('string'),
+      list: DS.belongsTo('list')
     });
 
-    Item.toString = function() {
-      return 'App.Item';
-    };
+    Item.toString = stringify('App.Item');
 
-    List.reopen({
-      items: DS.hasMany(Item)
+    container = env.container = new Ember.Container();
+
+    adapter = DS.LSAdapter.create({
+      container: container
     });
 
-    Item.reopen({
-      list: DS.belongsTo(List)
-    });
+    container.register('store:main', DS.Store.extend({
+      adapter: adapter
+    }));
 
-    adapter = DS.LSAdapter.create();
+    container.register('model:list', List);
+    container.register('model:item', Item);
 
-    store = DS.Store.create({adapter: adapter});
+    container.register('serializer:_default', DS.JSONSerializer);
 
-    clock = sinon.useFakeTimers();
+    container.injection('serializer', 'store', 'store:main');
+
+    store = env.store = container.lookup('store:main');
+    env.serializer = container.lookup('serializer:_default');
+    env.lsSerializer = container.lookup('serializer:_default');
+    env.adapter = env.store.get('_adapter');
+
   },
 
   teardown: function() {
-    clock.restore();
 
     localStorage.removeItem('DS.LSAdapter');
 
@@ -58,10 +69,11 @@ test('existence', function() {
   ok(DS.LSAdapter, 'LSAdapter added to DS namespace');
 });
 
-test('find', function() {
-  list = List.find('l1');
-  clock.tick(1);
-  assertStoredList();
+asyncTest('find', function() {
+  store.findAll('item');
+  list = store.find('list', 'l1');
+  console.log(list);
+  assertStoredList(list);
 });
 
 test('findMany', function() {

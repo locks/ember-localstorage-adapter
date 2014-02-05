@@ -144,6 +144,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
   findAll: function (store, type) {
     var namespace = this._namespaceForType(type),
         results = [];
+
     for (var id in namespace.records) {
       results.push(Ember.copy(namespace.records[id]));
     }
@@ -157,7 +158,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
     namespaceRecords.records[recordHash.id] = recordHash;
 
     this.persistData(type, namespaceRecords);
-    return Ember.RSVP.resolve(record);
+    return Ember.RSVP.resolve();
   },
 
   updateRecord: function (store, type, record) {
@@ -208,7 +209,7 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
     var namespace = this.modelNamespace(type),
         storage   = localStorage.getItem(this.adapterNamespace());
 
-    return storage ? JSON.parse(storage)[namespace] : {records: {}};
+    return storage ? JSON.parse(storage)[namespace] || {records: {}} : {records: {}};
   },
 
   modelNamespace: function(type) {

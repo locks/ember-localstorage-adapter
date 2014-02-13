@@ -3,10 +3,10 @@ Ember Data Local Storage Adapter
 
 Store your ember application data in localStorage.
 
-Compatible with Ember Data 1.0alpha+.
+Compatible with Ember Data 1.0.beta.5.
 
 **NOTE**: New versions of the `localStorage` adapter are no longer compatible
-with older versions of Ember Data. For older versions, checkout the `legacy`
+with older versions of Ember Data. For older versions, checkout the `pre-beta`
 branch.
 
 Usage
@@ -32,7 +32,12 @@ DS.LSAdapter.create({
 });
 ```
 
-### Model "url"
+### Models
+
+Whenever the adapter returns a record, it'll also return all
+relationships, so __do not__ use `{async: true}` in you model definitions.
+
+#### Namespace
 
 If your model definition has a `url` property, the adapter will store the data on that namespace. URL is a weird term in this context, but it makes swapping out adapters simpler by not requiring additional properties on your models.
 
@@ -60,14 +65,15 @@ App.store.commit();
 Todo
 ----
 
-- Figure out how to save a record once its transitioned to the error state.
 - Make the repo nicer to work with long-term (do something more intelligent with dependencies found in `vendor`, etc.)
-- Add some examples
 
 Tests
 -----
 
-Open `tests/index.html` in a browser.
+Open `tests/index.html` in a browser. If you have `phantomjs` installed,
+run
+
+    phantomjs test/runner.js test/index.html
 
 License & Copyright
 -------------------

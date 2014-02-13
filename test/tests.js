@@ -28,9 +28,27 @@ module('DS.LSAdapter', {
 
     App.Item.toString = stringify('App.Item');
 
+    App.Order = DS.Model.extend({
+      name: DS.attr('string'),
+      b: DS.attr('boolean'),
+      hours: DS.hasMany('hour')
+    });
+
+    App.Order.toString = stringify('App.Order');
+
+    App.Hour = DS.Model.extend({
+      name: DS.attr('string'),
+      amount: DS.attr('number'),
+      order: DS.belongsTo('order')
+    });
+
+    App.Hour.toString = stringify('App.Hour');
+
     env = setupStore({
       list: App.List,
       item: App.Item,
+      order: App.Order,
+      hour: App.Hour,
       adapter: DS.LSAdapter
     });
     store = env.store;
@@ -101,6 +119,39 @@ test('findAll', function() {
     equal(get(firstRecord,  'name'), "one", "First item's name is one");
     equal(get(secondRecord, 'name'), "two", "Second item's name is two");
     equal(get(thirdRecord,  'name'), "three", "Third item's name is three");
+
+    start();
+  });
+});
+
+test('findQueryMany', function() {
+  expect(11);
+  stop();
+  store.find('order', { b: true }).then(function(records) {
+    var firstRecord = records.objectAt(0),
+        secondRecord = records.objectAt(1),
+        thirdRecord = records.objectAt(2);
+
+    equal(get(records, 'length'), 3, "3 orders were found");
+    equal(get(firstRecord, 'name'), "one", "First order's name is one");
+    equal(get(secondRecord, 'name'), "three", "Second order's name is three");
+    equal(get(thirdRecord, 'name'), "four", "Third order's name is four");
+    var firstHours = firstRecord.get('hours'),
+        secondHours = secondRecord.get('hours'),
+        thirdHours = thirdRecord.get('hours');
+
+    equal(get(firstHours, 'length'), 2, "Order one has two hours");
+    equal(get(secondHours, 'length'), 2, "Order three has two hours");
+    equal(get(thirdHours, 'length'), 0, "Order four has no hours");
+
+    var hourOne = firstHours.objectAt(0),
+        hourTwo = firstHours.objectAt(1),
+        hourThree = secondHours.objectAt(0),
+        hourFour = secondHours.objectAt(1);
+    equal(get(hourOne, 'amount'), 4, "Hour one has amount of 4");
+    equal(get(hourTwo, 'amount'), 3, "Hour two has amount of 3");
+    equal(get(hourThree, 'amount'), 2, "Hour three has amount of 2");
+    equal(get(hourFour, 'amount'), 1, "Hour four has amount of 1");
 
     start();
   });

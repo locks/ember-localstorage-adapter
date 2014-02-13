@@ -16,6 +16,41 @@ DS.LSSerializer = DS.JSONSerializer.extend({
     }
   },
 
+  /**
+   * Extracts whatever was returned from the adapter.
+   *
+   * If the adapter returns relationships in an embedded way, such as follows:
+   *
+   * ```js
+   * {
+   *   "id": 1,
+   *   "title": "Rails Rambo",
+   *
+   *   "_embedded": {
+   *     "comment": [{
+   *       "id": 1,
+   *       "comment_title": "FIRST"
+   *     }, {
+   *       "id": 2,
+   *       "comment_title": "Rails is unagi"
+   *     }]
+   *   }
+   * }
+   *
+   * this method will create separated JSON for each resource and then push
+   * them individually to the Store.
+   *
+   * In the end, only the main resource will remain, containing the ids of its
+   * relationships. Given the relations are already in the Store, we will
+   * return a JSON with the main resource alone. The Store will sort out the
+   * associations by itself.
+   *
+   * @method extractSingle
+   * @private
+   * @param {DS.Store} store the returned store
+   * @param {DS.Model} type the type/model
+   * @param {Object} payload returned JSON
+   */
   extractSingle: function(store, type, payload) {
     if (payload && payload._embedded) {
       for (var relation in payload._embedded) {
@@ -35,6 +70,24 @@ DS.LSSerializer = DS.JSONSerializer.extend({
     }
 
     return this.normalize(type, payload);
+  },
+
+  /**
+   * This is exactly the same as extractSingle, but used in an array.
+   *
+   * @method extractSingle
+   * @private
+   * @param {DS.Store} store the returned store
+   * @param {DS.Model} type the type/model
+   * @param {Array} payload returned JSONs
+   */
+  extractArray: function(store, type, payload) {
+    var serializer = this;
+
+    return payload.map(function(record) {
+      var extracted = serializer.extractSingle(store, type, record);
+      return serializer.normalize(type, record);
+    });
   }
 
 });
@@ -96,6 +149,12 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
       }
 
       resolve(results);
+    }).then(function(records) {
+      if (records.get('length')) {
+        return adapter.loadRelationshipsForMany(type, records);
+      } else {
+        return records;
+      }
     });
   },
 
@@ -116,6 +175,10 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
   findQuery: function (store, type, query, recordArray) {
     var namespace = this._namespaceForType(type),
         results = this.query(namespace.records, query);
+
+    if (results.get('length')) {
+      results = this.loadRelationshipsForMany(type, results);
+    }
 
     return Ember.RSVP.resolve(results);
   },
@@ -390,6 +453,58 @@ DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 
   isArray: function(value) {
     return Object.prototype.toString.call(value) === '[object Array]';
+  },
+
+  /**
+   * Same as `loadRelationships`, but for an array of records.
+   *
+   * @method loadRelationshipsForMany
+   * @private
+   * @param {DS.Model} type
+   * @param {Object} recordsArray
+   */
+  loadRelationshipsForMany: function(type, recordsArray) {
+    var adapter = this;
+
+    return new Ember.RSVP.Promise(function(resolve, reject) {
+      var recordsWithRelationships = [],
+          recordsToBeLoaded = [],
+          promises = [];
+
+      /**
+       * Some times Ember puts some stuff in arrays. We want to clean it so
+       * we know exactly what to iterate over.
+       */
+      for (var i in recordsArray) {
+        if (recordsArray.hasOwnProperty(i)) {
+          recordsToBeLoaded.push(recordsArray[i]);
+        }
+      }
+
+      var loadNextRecord = function(record) {
+        /**
+         * Removes the first item from recordsToBeLoaded
+         */
+        recordsToBeLoaded = recordsToBeLoaded.slice(1);
+
+        var promise = adapter.loadRelationships(type, record);
+
+        promise.then(function(recordWithRelationships) {
+          recordsWithRelationships.push(recordWithRelationships);
+
+          if (recordsToBeLoaded[0]) {
+            loadNextRecord(recordsToBeLoaded[0]);
+          } else {
+            resolve(recordsWithRelationships);
+          }
+        });
+      }
+
+      /**
+       * We start by the first record
+       */
+      loadNextRecord(recordsToBeLoaded[0]);
+    });
   },
 
 

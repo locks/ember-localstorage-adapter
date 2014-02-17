@@ -212,6 +212,11 @@
       for (var id in namespace.records) {
         results.push(Ember.copy(namespace.records[id]));
       }
+
+      if (results.get('length')) {
+        results = this.loadRelationshipsForMany(type, results);
+      }
+
       return Ember.RSVP.resolve(results);
     },
 
@@ -371,7 +376,7 @@
 
             embedPromise = new Ember.RSVP.Promise(function(resolve, reject) {
               promise.then(function(relationRecord) {
-                var finalPayload = adapter.addEmbeddedPayload(record, relationName, relationRecord)
+                var finalPayload = adapter.addEmbeddedPayload(record, relationName, relationRecord);
                 resolve(finalPayload);
               });
             });

@@ -269,17 +269,17 @@ test('changes in bulk', function() {
 
     createdList.then(function(lists) {
       equal(get(lists, 'length'), 1, "Record was created successfully");
-      promises.push(Ember.RSVP.Promise());
+      promises.push(new Ember.RSVP.Promise(function(){}));
     });
 
     store.find('list', 'l2').then(function(list) {
       equal(get(list, 'length'), undefined, "Record was deleted successfully");
-      promises.push(Ember.RSVP.Promise());
+      promises.push(new Ember.RSVP.Promise(function(){}));
     });
 
     updatedList.then(function(list) {
       equal(get(list, 'name'), 'updated', "Record was updated successfully");
-      promises.push(Ember.RSVP.Promise());
+      promises.push(new Ember.RSVP.Promise(function(){}));
     });
 
     Ember.RSVP.all(promises).then(function() {
@@ -317,7 +317,7 @@ test('load belongsTo association', function() {
   stop();
 
   store.find('item', 'i1').then(function(item) {
-    return Ember.RSVP.Promise(function(resolve) { resolve(get(item, 'list')); });
+    return new Ember.RSVP.Promise(function(resolve) { resolve(get(item, 'list')); });
   }).then(function(list) {
     equal(get(list, 'id'), 'l1', "id is loaded correctly");
     equal(get(list, 'name'), 'one', "name is loaded correctly");

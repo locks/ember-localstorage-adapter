@@ -3,7 +3,7 @@ Ember Data Local Storage Adapter
 
 Store your ember application data in localStorage.
 
-Compatible with Ember Data 1.0.beta.5.
+Compatible with Ember Data 1.0.beta.6.
 
 **NOTE**: New versions of the `localStorage` adapter are no longer compatible
 with older versions of Ember Data. For older versions, checkout the `pre-beta`
@@ -68,6 +68,14 @@ Todo
 
 Tests
 -----
+
+If you don't have bower, install it with
+
+    npm install bower -g
+
+Then install the dependencies with
+
+    ```bower install```
 
 Open `tests/index.html` in a browser. If you have `phantomjs` installed,
 run

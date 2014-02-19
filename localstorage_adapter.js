@@ -189,13 +189,23 @@
           id, record, property, test, push;
       for (id in records) {
         record = records[id];
+        push = false;
         for (property in query) {
           test = query[property];
-          push = false;
           if (Object.prototype.toString.call(test) === '[object RegExp]') {
             push = test.test(record[property]);
+          } else if (test.hasOwnProperty('in_array')) {
+            for (var i = 0; i < test.in_array.length; i++) {
+              if (record[property] === test.in_array[i]) {
+                push = true;
+                break;
+              }
+            }
           } else {
             push = record[property] === test;
+          }
+          if (!push) {
+            break;
           }
         }
         if (push) {
@@ -371,7 +381,7 @@
 
             embedPromise = new Ember.RSVP.Promise(function(resolve, reject) {
               promise.then(function(relationRecord) {
-                var finalPayload = adapter.addEmbeddedPayload(record, relationName, relationRecord)
+                var finalPayload = adapter.addEmbeddedPayload(record, relationName, relationRecord);
                 resolve(finalPayload);
               });
             });

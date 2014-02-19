@@ -157,6 +157,34 @@ test('findQueryMany', function() {
   });
 });
 
+test('findQueryInArray', function() {
+  expect(3);
+  stop();
+  store.find('hour', {
+    amount: {in_array: [4,2]}
+  }).then(function(records) {
+    var firstHour = records.objectAt(0),
+        secondHour = records.objectAt(1);
+
+    equal(get(records, 'length'), 2, "2 hours were found with amounts of 4 or 2");
+    equal(get(firstHour, 'name'), 'one', "Hour one has name one");
+    equal(get(secondHour, 'name'), 'three', "Hour two has name three");
+    start();
+  });
+});
+
+test('findQueryAND', function() {
+  expect(1);
+  stop();
+  store.find('list', {
+    name: 'two',
+    b: true
+  }).then(function(records) {
+    equal(get(records, 'length'), 0, "No list should have both b as true and name of two");
+    start();
+  });
+});
+
 test('createRecord', function() {
   expect(5);
   stop();

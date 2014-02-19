@@ -61,6 +61,35 @@ App.store.adapter.on('QUOTA_EXCEEDED_ERR', function(records){
 App.store.commit();
 ```
 
+### Searching for records
+The adapter supports queries that look like this:
+
+```js
+{
+    <property to query>: <value to match>,
+    ...
+}
+```
+
+The ```<value>``` can currently be either:
+
+* A value that the property must be equal to.
+* A regex for strings that it must match.
+* An array of values, similar to SQL.
+
+The first two are used depending on if the value is just a single value or if it is a Regex.
+
+In order to use the array of values one must make an object with an in_array property, an example of this can be seen here:
+
+```js
+{
+    user_id: { in_array: [1,2,3] }
+}
+```
+
+This will return records where the user_id is either of the values: 1, 2, or 3.
+This is similar to the way SQL's IN works.
+
 Todo
 ----
 

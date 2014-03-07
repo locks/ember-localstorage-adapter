@@ -277,7 +277,7 @@
     },
 
     modelNamespace: function(type) {
-      return type.url || type.toString();
+      return type.url || type.typeKey;
     },
 
 

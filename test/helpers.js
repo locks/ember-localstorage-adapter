@@ -1,7 +1,7 @@
 Ember.ENV.TESTING = true;
 
 var FIXTURES = {
-  'App.List': {
+  'list': {
     records: {
       'l1': { id: 'l1', name: 'one', b: true, items: ['i1', 'i2'] },
       'l2': { id: 'l2', name: 'two', b: false, items: [] },
@@ -9,14 +9,14 @@ var FIXTURES = {
     }
   },
 
-  'App.Item': {
+  'item': {
     records: {
       'i1': { id: 'i1', name: 'one', list: 'l1' },
       'i2': { id: 'i2', name: 'two', list: 'l1' }
     }
   },
 
-  'App.Order': {
+  'order': {
     records: {
       'o1': { id: 'o1', name: 'one', b: true, hours: ['h1', 'h2'] },
       'o2': { id: 'o2', name: 'two', b: false, hours: [] },
@@ -25,7 +25,7 @@ var FIXTURES = {
     }
   },
 
-  'App.Hour': {
+  'hour': {
     records: {
       'h1': { id: 'h1', name: 'one', amount: 4, order: 'o1' },
       'h2': { id: 'h2', name: 'two', amount: 3, order: 'o1' },

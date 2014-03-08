@@ -19,14 +19,10 @@ module('DS.LSAdapter', {
       items: DS.hasMany('item')
     });
 
-    App.List.toString = stringify('App.List');
-
     App.Item = DS.Model.extend({
       name: DS.attr('string'),
       list: DS.belongsTo('list')
     });
-
-    App.Item.toString = stringify('App.Item');
 
     App.Order = DS.Model.extend({
       name: DS.attr('string'),
@@ -34,15 +30,11 @@ module('DS.LSAdapter', {
       hours: DS.hasMany('hour')
     });
 
-    App.Order.toString = stringify('App.Order');
-
     App.Hour = DS.Model.extend({
       name: DS.attr('string'),
       amount: DS.attr('number'),
       order: DS.belongsTo('order')
     });
-
-    App.Hour.toString = stringify('App.Hour');
 
     env = setupStore({
       list: App.List,

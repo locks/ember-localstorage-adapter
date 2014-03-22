@@ -36,11 +36,17 @@ module('DS.LSAdapter', {
       order: DS.belongsTo('order')
     });
 
+    App.Person = DS.Model.extend({
+      name: DS.attr('string'),
+      birthdate: DS.attr('date')
+    });
+
     env = setupStore({
       list: App.List,
       item: App.Item,
       order: App.Order,
       hour: App.Hour,
+      person: App.Person,
       adapter: DS.LSAdapter
     });
     store = env.store;
@@ -419,6 +425,24 @@ test("extractArray calls extractSingle", function() {
 
   store.get('container').unregister('serializer:list')
 });
+
+test('date is loaded correctly', function() {
+  expect(2);
+  stop();
+
+  var date = new Date(1988, 11, 28);
+  
+  var person = store.createRecord('person', { name: 'Tom', birthdate: date });
+  person.save().then(function() {
+    store.find('person', { name: 'Tom' }).then(function(records) {
+      var loadedPerson = records.get('firstObject');
+      var birthdate = get(loadedPerson, 'birthdate');
+      ok((birthdate instanceof Date), 'Date should be loaded as an instance of Date');
+      equal(birthdate.getTime(), date.getTime(), 'Date content should be loaded correctly');
+      start();
+    });
+  });
+})
 
 // This crashes chrome.
 // TODO: Figure out a way to test this without using so much memory.

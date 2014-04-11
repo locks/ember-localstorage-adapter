@@ -252,7 +252,7 @@
     // private
 
     adapterNamespace: function () {
-      return this.namespace || 'DS.LSAdapter';
+      return this.get('namespace') || 'DS.LSAdapter';
     },
 
     loadData: function () {

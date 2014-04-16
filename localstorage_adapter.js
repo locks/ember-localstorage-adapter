@@ -7,12 +7,13 @@
 
     serializeHasMany: function(record, json, relationship) {
       var key = relationship.key,
+          payloadKey = this.keyForRelationship ? this.keyForRelationship(key, 'hasMany') : key,
           relationshipType = DS.RelationshipChange.determineRelationshipType(record.constructor, relationship);
 
       if (relationshipType === 'manyToNone' ||
           relationshipType === 'manyToMany' ||
           relationshipType === 'manyToOne') {
-        json[key] = record.get(key).mapBy('id');
+        json[payloadKey] = record.get(key).mapBy('id');
       // TODO support for polymorphic manyToNone and manyToMany relationships
       }
     },
@@ -83,12 +84,9 @@
      * @param {Array} payload returned JSONs
      */
     extractArray: function(store, type, payload) {
-      var serializer = this;
-
-      return payload.map(function(record) {
-        var extracted = serializer.extractSingle(store, type, record);
-        return serializer.normalize(type, record);
-      });
+      return payload.map(function(json) {
+        return this.extractSingle(store, type, json);
+      }, this);
     }
 
   });

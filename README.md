@@ -75,7 +75,7 @@ If you don't have bower, install it with
 
 Then install the dependencies with
 
-    ```bower install```
+    bower install
 
 Open `tests/index.html` in a browser. If you have `phantomjs` installed,
 run

@@ -55,7 +55,8 @@
     extractSingle: function(store, type, payload) {
       if (payload && payload._embedded) {
         for (var relation in payload._embedded) {
-          var typeName = Ember.String.singularize(relation),
+          var relType = type.typeForRelationship(relation);
+          var typeName = relType.typeKey,
               embeddedPayload = payload._embedded[relation];
 
           if (embeddedPayload) {

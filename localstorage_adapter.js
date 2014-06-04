@@ -124,6 +124,7 @@
         var record = Ember.A(namespace.records[id]);
 
         if (!record || !record.hasOwnProperty('id')) {
+          store.dematerializeRecord(store.typeMapFor(type).idToRecord[id]);
           reject();
           return;
         }

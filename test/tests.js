@@ -64,6 +64,17 @@ test('find with id', function() {
   });
 });
 
+test('find non-existing record', function () {
+  expect(2);
+
+  stop();
+  store.find("list", "unknown").catch(function () {
+    ok(true);
+    equal(store.hasRecordForId("list", "unknown"), false);
+    start();
+  });
+});
+
 test('findQuery', function() {
 
   stop();

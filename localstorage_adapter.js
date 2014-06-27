@@ -180,9 +180,10 @@
 
       if (results.get('length')) {
         results = this.loadRelationshipsForMany(type, results);
+        return Ember.RSVP.resolve(results);
+      } else {
+        return Ember.RSVP.reject();
       }
-
-      return Ember.RSVP.resolve(results);
     },
 
     query: function (records, query) {

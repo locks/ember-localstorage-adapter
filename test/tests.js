@@ -65,12 +65,11 @@ test('find with id', function() {
 });
 
 test('#find - rejects promise when non-existing record', function () {
-  expect(2);
+  expect(1);
 
   stop();
   store.find("list", "unknown").catch(function () {
     ok(true);
-    equal(store.hasRecordForId("list", "unknown"), false);
     start();
   });
 });

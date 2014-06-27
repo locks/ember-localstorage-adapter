@@ -123,20 +123,20 @@
       return new Ember.RSVP.Promise(function(resolve, reject) {
         var record = Ember.A(namespace.records[id]);
 
-        if (allowRecursive && record) {
+        if (!record || !record.hasOwnProperty('id')) {
+          store.dematerializeRecord(store.typeMapFor(type).idToRecord[id]);
+          reject();
+          return;
+        }
+
+        if (allowRecursive) {
           adapter.loadRelationships(type, record).then(function(finalRecord) {
             resolve(finalRecord);
           });
         } else {
-          if (!record) {
-            reject();
-          } else {
-            resolve(record);
-          }
+          resolve(record);
         }
       });
-
-      resolve(record);
     },
 
     findMany: function (store, type, ids) {
@@ -180,9 +180,10 @@
 
       if (results.get('length')) {
         results = this.loadRelationshipsForMany(type, results);
+        return Ember.RSVP.resolve(results);
+      } else {
+        return Ember.RSVP.reject();
       }
-
-      return Ember.RSVP.resolve(results);
     },
 
     query: function (records, query) {

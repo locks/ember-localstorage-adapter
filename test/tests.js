@@ -64,6 +64,17 @@ test('find with id', function() {
   });
 });
 
+test('#find - rejects promise when non-existing record', function () {
+  expect(2);
+
+  stop();
+  store.find("list", "unknown").catch(function () {
+    ok(true);
+    equal(store.hasRecordForId("list", "unknown"), false);
+    start();
+  });
+});
+
 test('findQuery', function() {
 
   stop();
@@ -89,10 +100,13 @@ test('findQuery', function() {
     equal(get(records, 'length'), 1, 'found results for {b: true}');
     start();
   });
+});
 
+test('#findQuery - rejects promise when there are no records', function() {
   stop();
-  store.findQuery('list', {whatever: "dude"}).then(function(records) {
-    equal(get(records, 'length'), 0, 'didn\'t find results for nonsense');
+  store.findQuery('list', {name: /unknown/}).catch(function() {
+    ok(true);
+    equal(store.hasRecordForId("list", "unknown"), false);
     start();
   });
 });
@@ -207,8 +221,8 @@ test('deleteRecord', function() {
   expect(2);
   stop();
   var AssertListIsDeleted = function() {
-    return store.findQuery('list', { name: 'one' }).then(function(records) {
-      equal(get(records, 'length'), 0, "No record was found");
+    return store.findQuery('list', { name: 'one' }).catch(function() {
+      ok(true, "List was deleted");
       start();
     });
   }

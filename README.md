@@ -49,6 +49,27 @@ List.reopen({
 });
 ```
 
+### Ability to generate other UUIDs
+
+This example overrides the generation of ids of the library, and instead
+generates RFC4122 ids (aka PostgreSQL uuids):
+
+```js
+import DS from 'ember-data';
+
+export default DS.LSAdapter.extend({
+  generateIdForRecord: function() {
+    var s4 = function () {
+      return Math.floor((1 + Math.random()) * 0x10000)
+                 .toString(16)
+                 .substring(1);
+    };
+    return s4() + s4() + '-' + s4() + '-' + s4() + '-' +
+           s4() + '-' + s4() + s4() + s4();
+  }
+});
+```
+
 ### Quota Exceeded Handler
 
 Browser's `localStorage` has limited space, if you try to commit application data and the browser is out of space, then the adapter will trigger the `QUOTA_EXCEEDED_ERR` event.

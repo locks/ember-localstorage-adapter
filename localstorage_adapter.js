@@ -122,7 +122,8 @@
         var record = Ember.A(namespace.records[id]);
 
         if (!record || !record.hasOwnProperty('id')) {
-          reject();
+          reject(new Error("Couldn't find record of type '" + type.typeKey
+                           + "' for the id '" + id + "'."));
           return;
         }
 
@@ -157,7 +158,8 @@
         for (var i = 0; i < ids.length; i++) {
           record = namespace.records[ids[i]];
           if (!record || !record.hasOwnProperty('id')) {
-            reject();
+            reject(new Error("Couldn't find record of type '" + type.typeKey
+                             + "' for the id '" + ids[i] + "'."));
             return;
           }
           results.push(Ember.copy(record));

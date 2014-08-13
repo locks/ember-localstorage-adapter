@@ -84,12 +84,9 @@
      * @param {Array} payload returned JSONs
      */
     extractArray: function(store, type, payload) {
-      var serializer = this;
-
-      return payload.map(function(record) {
-        var extracted = serializer.extractSingle(store, type, record);
-        return serializer.normalize(type, record);
-      });
+      return payload.map(function(json) {
+        return this.extractSingle(store, type, json);
+      }, this);
     }
 
   });

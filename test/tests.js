@@ -378,6 +378,25 @@ test('saves hasMany', function() {
   });
 });
 
+test("serializeHasMany respects keyForRelationship", function() {
+  store.get('container').register('serializer:list', DS.LSSerializer.extend({
+    keyForRelationship: function(key, type) {
+      return key.toUpperCase();
+    }
+  }));
+
+  list = store.createRecord('list', { name: "Rails is omakase", id: "1"});
+  comment = store.createRecord('item', { name: "Omakase is delicious", list: list, id: "1"});
+  var json = {};
+
+  store.get('container').lookup("serializer:list").serializeHasMany(list, json, {key: "items", options: {}});
+
+  deepEqual(json, {
+    ITEMS: ["1"]
+  });
+  store.get('container').unregister('serializer:list')
+});
+
 // This crashes chrome.
 // TODO: Figure out a way to test this without using so much memory.
 //

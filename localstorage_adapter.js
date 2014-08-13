@@ -6,14 +6,15 @@
   DS.LSSerializer = DS.JSONSerializer.extend({
 
     serializeHasMany: function(record, json, relationship) {
-      var key = relationship.key,
-          relationshipType = DS.RelationshipChange.determineRelationshipType(record.constructor, relationship);
+      var key = relationship.key;
+      var payloadKey = this.keyForRelationship ? this.keyForRelationship(key, "hasMany") : key;
+      var relationshipType = DS.RelationshipChange.determineRelationshipType(record.constructor, relationship);
 
       if (relationshipType === 'manyToNone' ||
           relationshipType === 'manyToMany' ||
           relationshipType === 'manyToOne') {
-        json[key] = record.get(key).mapBy('id');
-      // TODO support for polymorphic manyToNone and manyToMany relationships
+        json[payloadKey] = get(record, key).mapBy('id');
+        // TODO support for polymorphic manyToNone and manyToMany relationships
       }
     },
 

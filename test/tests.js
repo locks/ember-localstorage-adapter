@@ -394,6 +394,29 @@ test("serializeHasMany respects keyForRelationship", function() {
   deepEqual(json, {
     ITEMS: ["1"]
   });
+
+  store.get('container').unregister('serializer:list')
+});
+
+test("extractArray calls extractSingle", function() {
+  var callback = sinon.stub();
+
+  store.get('container').register('serializer:list', DS.LSSerializer.extend({
+    extractSingle: function(store, type, payload) {
+      callback();
+      return this.normalize(type, payload);
+    }
+  }));
+
+  expect(1);
+  stop();
+
+  store.find('list').then(function(lists) {
+    equal(callback.callCount, 3);
+    
+    start();
+  });
+
   store.get('container').unregister('serializer:list')
 });
 

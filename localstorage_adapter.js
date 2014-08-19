@@ -192,18 +192,21 @@
 
     query: function (records, query) {
       var results = [], record;
+
+      function recordMatchesQuery(record) {
+        return Ember.keys(query).every(function(property) {
+          var test = query[property];
+          if (Object.prototype.toString.call(test) === '[object RegExp]') {
+            return test.test(record[property]);
+          } else {
+            return record[property] === test;
+          }
+        });
+      }
+
       for (var id in records) {
         record = records[id];
-        if (
-          Ember.keys(query).every(function(property) {
-            var test = query[property];
-            if (Object.prototype.toString.call(test) === '[object RegExp]') {
-              return test.test(record[property]);
-            } else {
-              return record[property] === test;
-            }
-          })
-        ) {
+        if (recordMatchesQuery(record)) {
           results.push(Ember.copy(record));
         }
       }

@@ -336,7 +336,13 @@
           resultJSON = {},
           typeKey = type.typeKey,
           relationshipNames, relationships,
-          relationshipPromises = [];
+          relationshipPromises = [],
+          /**
+           * Create a chain of promises, so the relationships are
+           * loaded sequentially.  Think of the variable
+           * `recordPromise` as of the accumulator in a left fold.
+           */
+          recordPromise = Ember.RSVP.resolve(record);
 
       relationshipNames = Ember.get(type, 'relationshipNames');
       relationships = relationshipNames.belongsTo;
@@ -346,11 +352,7 @@
         var relationModel = type.typeForRelationship(relationName),
             relationEmbeddedId = record[relationName],
             relationProp  = adapter.relationshipProperties(type, relationName),
-            relationType  = relationProp.kind,
-            /**
-             * This is the relationship field.
-             */
-            promise, embedPromise;
+            relationType  = relationProp.kind;
 
         var opts = {allowRecursive: false};
 
@@ -369,23 +371,22 @@
          * main payload. We find each of these records and add them to _embedded.
          */
         if (relationEmbeddedId) {
-          if (relationType === 'belongsTo' || relationType === 'hasOne') {
-            promise = adapter.find(null, relationModel, relationEmbeddedId, opts);
-          } else if (relationType == 'hasMany') {
-            promise = adapter.findMany(null, relationModel, relationEmbeddedId, opts);
-          }
+          recordPromise = recordPromise.then(function(recordPayload) {
+            var promise;
+            if (relationType === 'belongsTo' || relationType === 'hasOne') {
+              promise = adapter.find(null, relationModel, relationEmbeddedId, opts);
+            } else if (relationType == 'hasMany') {
+              promise = adapter.findMany(null, relationModel, relationEmbeddedId, opts);
+            }
 
-          embedPromise = promise.then(function(relationRecord) {
-            return adapter.addEmbeddedPayload(record, relationName, relationRecord);
+            return promise.then(function(relationRecord) {
+              return adapter.addEmbeddedPayload(recordPayload, relationName, relationRecord);
+            });
           });
-
-          relationshipPromises.push(embedPromise);
         }
       });
 
-      return Ember.RSVP.all(relationshipPromises).then(function() {
-        return record;
-      });
+      return recordPromise;
     },
 
 

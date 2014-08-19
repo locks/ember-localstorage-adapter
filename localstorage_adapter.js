@@ -102,9 +102,9 @@
       @param {Object|String|Integer|null} id
       */
     find: function(store, type, id, opts) {
-      var adapter = this;
       var allowRecursive = true;
       var namespace = this._namespaceForType(type);
+      var record = Ember.A(namespace.records[id]);
 
       /**
        * In the case where there are relationships, this method is called again
@@ -118,27 +118,24 @@
         allowRecursive = opts.allowRecursive;
       }
 
-      return new Ember.RSVP.Promise(function(resolve, reject) {
-        var record = Ember.A(namespace.records[id]);
+      if (!record || !record.hasOwnProperty('id')) {
+        return Ember.RSVP.reject(new Error("Couldn't find record of"
+                                           + " type '" + type.typeKey
+                                           + "' for the id '" + id + "'."));
+      }
 
-        if (!record || !record.hasOwnProperty('id')) {
-          reject(new Error("Couldn't find record of type '" + type.typeKey
-                           + "' for the id '" + id + "'."));
-          return;
-        }
-
-        if (allowRecursive) {
-          resolve(adapter.loadRelationships(type, record));
-        } else {
-          resolve(record);
-        }
-      });
+      if (allowRecursive) {
+        return this.loadRelationships(type, record);
+      } else {
+        return Ember.RSVP.resolve(record);
+      }
     },
 
     findMany: function (store, type, ids, opts) {
+      var namespace = this._namespaceForType(type);
       var adapter = this,
-          namespace = this._namespaceForType(type),
-          allowRecursive = true;
+          allowRecursive = true,
+          results = [], record;
 
       /**
        * In the case where there are relationships, this method is called again
@@ -152,25 +149,20 @@
         allowRecursive = opts.allowRecursive;
       }
 
-      return new Ember.RSVP.Promise(function(resolve, reject) {
-        var results = [], record;
-
-        for (var i = 0; i < ids.length; i++) {
-          record = namespace.records[ids[i]];
-          if (!record || !record.hasOwnProperty('id')) {
-            reject(new Error("Couldn't find record of type '" + type.typeKey
-                             + "' for the id '" + ids[i] + "'."));
-            return;
-          }
-          results.push(Ember.copy(record));
+      for (var i = 0; i < ids.length; i++) {
+        record = namespace.records[ids[i]];
+        if (!record || !record.hasOwnProperty('id')) {
+          return Ember.RSVP.reject(new Error("Couldn't find record of type '" + type.typeKey
+                                             + "' for the id '" + ids[i] + "'."));
         }
+        results.push(Ember.copy(record));
+      }
 
-        if (results.get('length') && allowRecursive) {
-          resolve(adapter.loadRelationshipsForMany(type, results));
-        } else {
-          resolve(results);
-        }
-      });
+      if (results.get('length') && allowRecursive) {
+        return this.loadRelationshipsForMany(type, results);
+      } else {
+        return Ember.RSVP.resolve(results);
+      }
     },
 
     // Supports queries that look like this:
@@ -188,12 +180,11 @@
     //
     //    { complete: true, name: /foo|bar/ }
     findQuery: function (store, type, query, recordArray) {
-      var namespace = this._namespaceForType(type),
-          results = this.query(namespace.records, query);
+      var namespace = this._namespaceForType(type);
+      var results = this.query(namespace.records, query);
 
       if (results.get('length')) {
-        results = this.loadRelationshipsForMany(type, results);
-        return Ember.RSVP.resolve(results);
+        return this.loadRelationshipsForMany(type, results);
       } else {
         return Ember.RSVP.reject();
       }
@@ -230,8 +221,8 @@
     },
 
     createRecord: function (store, type, record) {
-      var namespaceRecords = this._namespaceForType(type),
-          recordHash = record.serialize({includeId: true});
+      var namespaceRecords = this._namespaceForType(type);
+      var recordHash = record.serialize({includeId: true});
 
       namespaceRecords.records[recordHash.id] = recordHash;
 
@@ -240,8 +231,8 @@
     },
 
     updateRecord: function (store, type, record) {
-      var namespaceRecords = this._namespaceForType(type),
-          id = record.get('id');
+      var namespaceRecords = this._namespaceForType(type);
+      var id = record.get('id');
 
       namespaceRecords.records[id] = record.serialize({ includeId: true });
 
@@ -250,8 +241,8 @@
     },
 
     deleteRecord: function (store, type, record) {
-      var namespaceRecords = this._namespaceForType(type),
-          id = record.get('id');
+      var namespaceRecords = this._namespaceForType(type);
+      var id = record.get('id');
 
       delete namespaceRecords.records[id];
 
@@ -275,8 +266,8 @@
     },
 
     persistData: function(type, data) {
-      var modelNamespace = this.modelNamespace(type),
-          localStorageData = this.loadData();
+      var modelNamespace = this.modelNamespace(type);
+      var localStorageData = this.loadData();
 
       localStorageData[modelNamespace] = data;
 
@@ -284,8 +275,8 @@
     },
 
     _namespaceForType: function (type) {
-      var namespace = this.modelNamespace(type),
-          storage   = this.loadData();
+      var namespace = this.modelNamespace(type);
+      var storage   = this.loadData();
 
       return storage[namespace] || {records: {}};
     },
@@ -342,24 +333,25 @@
           resultJSON = {},
           typeKey = type.typeKey,
           relationshipNames, relationships,
-          relationshipPromises = [],
-          /**
-           * Create a chain of promises, so the relationships are
-           * loaded sequentially.  Think of the variable
-           * `recordPromise` as of the accumulator in a left fold.
-           */
-          recordPromise = Ember.RSVP.resolve(record);
+          relationshipPromises = [];
+
+      /**
+       * Create a chain of promises, so the relationships are
+       * loaded sequentially.  Think of the variable
+       * `recordPromise` as of the accumulator in a left fold.
+       */
+      var recordPromise = Ember.RSVP.resolve(record);
 
       relationshipNames = Ember.get(type, 'relationshipNames');
-      relationships = relationshipNames.belongsTo;
-      relationships = relationships.concat(relationshipNames.hasMany);
+      relationships = relationshipNames.belongsTo
+        .concat(relationshipNames.hasMany);
 
       relationships.forEach(function(relationName) {
-        var relationModel = type.typeForRelationship(relationName),
-            relationEmbeddedId = record[relationName],
-            relationProp  = adapter.relationshipProperties(type, relationName),
-            relationType  = relationProp.kind,
-            foreignAdapter = type.store.adapterFor(relationModel);
+        var relationModel = type.typeForRelationship(relationName);
+        var relationEmbeddedId = record[relationName];
+        var relationProp  = adapter.relationshipProperties(type, relationName);
+        var relationType  = relationProp.kind;
+        var foreignAdapter = type.store.adapterFor(relationModel);
 
         var opts = {allowRecursive: false};
 
@@ -436,9 +428,9 @@
      * @param {Object} relationshipRecord
      */
     addEmbeddedPayload: function(payload, relationshipName, relationshipRecord) {
-      var objectHasId = (relationshipRecord && relationshipRecord.id),
-          arrayHasIds = (relationshipRecord.length && relationshipRecord.everyBy("id")),
-          isValidRelationship = (objectHasId || arrayHasIds);
+      var objectHasId = (relationshipRecord && relationshipRecord.id);
+      var arrayHasIds = (relationshipRecord.length && relationshipRecord.everyBy("id"));
+      var isValidRelationship = (objectHasId || arrayHasIds);
 
       if (isValidRelationship) {
         if (!payload['_embedded']) {

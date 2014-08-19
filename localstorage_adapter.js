@@ -152,10 +152,15 @@
       }
 
       return new Ember.RSVP.Promise(function(resolve, reject) {
-        var results = [];
+        var results = [], record;
 
         for (var i = 0; i < ids.length; i++) {
-          results.push(Ember.copy(namespace.records[ids[i]]));
+          record = namespace.records[ids[i]];
+          if (!record || !record.hasOwnProperty('id')) {
+            reject();
+            return;
+          }
+          results.push(Ember.copy(record));
         }
 
         if (results.get('length') && allowRecursive) {

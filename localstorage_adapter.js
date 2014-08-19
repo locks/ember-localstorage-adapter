@@ -266,9 +266,9 @@
 
     _namespaceForType: function (type) {
       var namespace = this.modelNamespace(type),
-          storage   = localStorage.getItem(this.adapterNamespace());
+          storage   = this.loadData();
 
-      return storage ? JSON.parse(storage)[namespace] || {records: {}} : {records: {}};
+      return storage[namespace] || {records: {}};
     },
 
     modelNamespace: function(type) {

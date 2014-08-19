@@ -467,47 +467,24 @@
      * @param {Object} recordsArray
      */
     loadRelationshipsForMany: function(type, recordsArray) {
-      var adapter = this;
+      var adapter = this,
+          promise = Ember.RSVP.resolve([]);
 
-      return new Ember.RSVP.Promise(function(resolve, reject) {
-        var recordsWithRelationships = [],
-            recordsToBeLoaded = [],
-            promises = [];
-
-        /**
-         * Some times Ember puts some stuff in arrays. We want to clean it so
-         * we know exactly what to iterate over.
-         */
-        for (var i in recordsArray) {
-          if (recordsArray.hasOwnProperty(i)) {
-            recordsToBeLoaded.push(recordsArray[i]);
-          }
-        }
-
-        var loadNextRecord = function(record) {
-          /**
-           * Removes the first item from recordsToBeLoaded
-           */
-          recordsToBeLoaded = recordsToBeLoaded.slice(1);
-
-          var promise = adapter.loadRelationships(type, record);
-
-          promise.then(function(recordWithRelationships) {
-            recordsWithRelationships.push(recordWithRelationships);
-
-            if (recordsToBeLoaded[0]) {
-              loadNextRecord(recordsToBeLoaded[0]);
-            } else {
-              resolve(recordsWithRelationships);
-            }
-          });
-        }
-
-        /**
-         * We start by the first record
-         */
-        loadNextRecord(recordsToBeLoaded[0]);
+      /**
+       * Create a chain of promises, so the records are loaded sequentially.
+       * Think of the variable promise as of the accumulator in a left fold.
+       */
+      recordsArray.forEach(function(record) {
+        promise = promise.then(function(records) {
+          return adapter.loadRelationships(type, record)
+            .then(function(loadedRecord) {
+              records.push(loadedRecord);
+              return records;
+            });
+        });
       });
+
+      return promise;
     },
 
 

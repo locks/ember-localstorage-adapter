@@ -200,21 +200,20 @@
     },
 
     query: function (records, query) {
-      var results = [],
-          id, record, property, test, push;
-      for (id in records) {
+      var results = [], record;
+      for (var id in records) {
         record = records[id];
-        for (property in query) {
-          test = query[property];
-          push = false;
-          if (Object.prototype.toString.call(test) === '[object RegExp]') {
-            push = test.test(record[property]);
-          } else {
-            push = record[property] === test;
-          }
-        }
-        if (push) {
-          results.push(record);
+        if (
+          Ember.keys(query).every(function(property) {
+            var test = query[property];
+            if (Object.prototype.toString.call(test) === '[object RegExp]') {
+              return test.test(record[property]);
+            } else {
+              return record[property] === test;
+            }
+          })
+        ) {
+          results.push(Ember.copy(record));
         }
       }
       return results;

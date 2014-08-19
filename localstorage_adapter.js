@@ -134,9 +134,22 @@
       });
     },
 
-    findMany: function (store, type, ids) {
+    findMany: function (store, type, ids, opts) {
       var adapter = this,
-          namespace = this._namespaceForType(type);
+          namespace = this._namespaceForType(type),
+          allowRecursive = true;
+
+      /**
+       * In the case where there are relationships, this method is called again
+       * for each relation. Given the relations have references to the main
+       * object, we use allowRecursive to avoid going further into infinite
+       * recursiveness.
+       *
+       * Concept from ember-indexdb-adapter
+       */
+      if (opts && typeof opts.allowRecursive !== 'undefined') {
+        allowRecursive = opts.allowRecursive;
+      }
 
       return new Ember.RSVP.Promise(function(resolve, reject) {
         var results = [];
@@ -145,7 +158,7 @@
           results.push(Ember.copy(namespace.records[ids[i]]));
         }
 
-        if (results.get('length')) {
+        if (results.get('length') && allowRecursive) {
           resolve(adapter.loadRelationshipsForMany(type, results));
         } else {
           resolve(results);

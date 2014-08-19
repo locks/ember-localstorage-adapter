@@ -352,7 +352,8 @@
         var relationModel = type.typeForRelationship(relationName),
             relationEmbeddedId = record[relationName],
             relationProp  = adapter.relationshipProperties(type, relationName),
-            relationType  = relationProp.kind;
+            relationType  = relationProp.kind,
+            foreignAdapter = type.store.adapterFor(relationModel);
 
         var opts = {allowRecursive: false};
 
@@ -370,7 +371,8 @@
          * In this case, cart belongsTo customer and its id is present in the
          * main payload. We find each of these records and add them to _embedded.
          */
-        if (relationEmbeddedId) {
+        if (relationEmbeddedId && foreignAdapter === adapter)
+        {
           recordPromise = recordPromise.then(function(recordPayload) {
             var promise;
             if (relationType === 'belongsTo' || relationType === 'hasOne') {

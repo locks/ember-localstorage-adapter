@@ -13,7 +13,7 @@
       if (relationshipType === 'manyToNone' ||
           relationshipType === 'manyToMany' ||
           relationshipType === 'manyToOne') {
-        json[payloadKey] = get(record, key).mapBy('id');
+        json[payloadKey] = record.get(key).mapBy('id');
         // TODO support for polymorphic manyToNone and manyToMany relationships
       }
     },

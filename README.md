@@ -21,6 +21,12 @@ App.ApplicationAdapter = DS.LSAdapter.extend({
 });
 ```
 
+If you are using Ember Localstorage Adapter within an Ember CLI project you can install it as an addon with the following command:
+
+```sh
+npm install --save-dev ember-localstorage-adapter
+```
+
 ### Local Storage Namespace
 
 All of your application data lives on a single `localStorage` key, it defaults to `DS.LSAdapter` but if you supply a `namespace` option it will store it there:

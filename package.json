@@ -18,7 +18,7 @@
   ],
   "ember-addon": {
     "main": "ember-addon-main.js",
-    "after": "ember-cli-ember-data"
+    "after": "ember-data"
   },
   "author": "Ryan Florence <rpflorence@gmail.com>",
   "license": "MIT",

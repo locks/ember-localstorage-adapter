@@ -27,6 +27,14 @@ If you are using Ember Localstorage Adapter within an Ember CLI project you can 
 npm install --save-dev ember-localstorage-adapter
 ```
 
+Then in Brocfile.js import it before module.exports:
+
+```js
+app.import('bower_components/ember-localstorage-adapter/localstorage_adapter.js');
+
+module.exports = app.toTree();
+```
+
 ### Local Storage Namespace
 
 All of your application data lives on a single `localStorage` key, it defaults to `DS.LSAdapter` but if you supply a `namespace` option it will store it there:

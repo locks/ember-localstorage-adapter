@@ -1,6 +1,9 @@
 Ember Data Local Storage Adapter
 ================================
 
+[![Build
+Status](https://travis-ci.org/kurko/ember-localstorage-adapter.svg?branch=master)](https://travis-ci.org/kurko/ember-localstorage-adapter)
+
 Store your ember application data in localStorage.
 
 Compatible with Ember Data 1.0.beta.6.

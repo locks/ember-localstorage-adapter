@@ -1,6 +1,6 @@
 {
   "name": "ember-localstorage-adapter",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Store your Ember application data in LocalStorage.",
   "main": "localstorage_adapter.js",
   "directories": {
@@ -21,6 +21,10 @@
     "after": "ember-data"
   },
   "author": "Ryan Florence <rpflorence@gmail.com>",
+  "contributors": [{
+    "name": "Alexandre de Oliveira",
+    "email": "chavedomundo@gmail.com"
+  }],
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/kurko/ember-localstorage-adapter/issues"

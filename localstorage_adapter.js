@@ -5,15 +5,15 @@
 
   DS.LSSerializer = DS.JSONSerializer.extend({
 
-    serializeHasMany: function(record, json, relationship) {
+    serializeHasMany: function(snapshot, json, relationship) {
       var key = relationship.key;
       var payloadKey = this.keyForRelationship ? this.keyForRelationship(key, "hasMany") : key;
-      var relationshipType = record.constructor.determineRelationshipType(relationship);
+      var relationshipType = snapshot.type.determineRelationshipType(relationship);
 
       if (relationshipType === 'manyToNone' ||
           relationshipType === 'manyToMany' ||
           relationshipType === 'manyToOne') {
-        json[payloadKey] = record.get(key).mapBy('id');
+        json[payloadKey] = snapshot.hasMany(key).mapBy('id');
         // TODO support for polymorphic manyToNone and manyToMany relationships
       }
     },
@@ -225,7 +225,9 @@
 
     createRecord: function (store, type, record) {
       var namespaceRecords = this._namespaceForType(type);
-      var recordHash = record.serialize({includeId: true});
+      var serializer = store.serializerFor(type.typeKey);
+      var snapshot = record._createSnapshot();
+      var recordHash = serializer.serialize(snapshot, {includeId: true});
 
       namespaceRecords.records[recordHash.id] = recordHash;
 
@@ -236,8 +238,10 @@
     updateRecord: function (store, type, record) {
       var namespaceRecords = this._namespaceForType(type);
       var id = record.get('id');
+      var serializer = store.serializerFor(type.typeKey);
+      var snapshot = record._createSnapshot();
 
-      namespaceRecords.records[id] = record.serialize({ includeId: true });
+      namespaceRecords.records[id] = serializer.serialize(snapshot, {includeId: true});
 
       this.persistData(type, namespaceRecords);
       return Ember.RSVP.resolve();

@@ -394,8 +394,9 @@ test("serializeHasMany respects keyForRelationship", function() {
   list = store.createRecord('list', { name: "Rails is omakase", id: "1"});
   comment = store.createRecord('item', { name: "Omakase is delicious", list: list, id: "1"});
   var json = {};
+  var snapshot = list._createSnapshot();
 
-  store.get('container').lookup("serializer:list").serializeHasMany(list, json, {key: "items", options: {}});
+  store.get('container').lookup("serializer:list").serializeHasMany(snapshot, json, {key: "items", options: {}});
 
   deepEqual(json, {
     ITEMS: ["1"]

@@ -27,7 +27,7 @@ App.ApplicationAdapter = DS.LSAdapter.extend({
 If you are using Ember Localstorage Adapter within an Ember CLI project you can install it as an addon with the following command:
 
 ```sh
-npm install --save-dev ember-localstorage-adapter
+ember install:bower ember-localstorage-adapter
 ```
 
 Then in Brocfile.js import it before module.exports:

@@ -284,22 +284,27 @@
     getLocalStorage: function() {
       if (this._localStorage) { return this._localStorage; }
 
+      var storage;
       try {
-        this._localStorage = this.getNativeStorage();
+        storage = this.getNativeStorage() || this._enableInMemoryStorage();
       } catch (e) {
-        this.trigger('persistenceUnavailable', e);
-        this._localStorage = {
-          storage: {},
-          getItem: function(name) {
-            return this.storage[name];
-          },
-          setItem: function(name, value) {
-            this.storage[name] = value;
-          }
-        };
+        storage = this._enableInMemoryStorage(e);
       }
 
-      return this._localStorage;
+      return this._localStorage = storage;
+    },
+
+    _enableInMemoryStorage: function(reason) {
+      this.trigger('persistenceUnavailable', reason);
+      return {
+        storage: {},
+        getItem: function(name) {
+          return this.storage[name];
+        },
+        setItem: function(name, value) {
+          this.storage[name] = value;
+        }
+      };
     },
 
     // This exists primarily as a testing extension point

@@ -78,6 +78,16 @@ App.store.adapter.on('QUOTA_EXCEEDED_ERR', function(records){
 App.store.commit();
 ```
 
+### Local Storage Unavailable
+
+When `localStorage` is not available (typically because the user has explicitly disabled it), the adapter will keep records in memory. When the adapter first discovers that this is the case, it will trigger a `persistenceUnavailable` event, which the application may use to take any necessary actions.
+
+```js
+adapter.on('persistenceUnavailable', function() {
+  // Maybe notify the user that their data won't live past the end of the current session
+});
+```
+
 Todo
 ----
 

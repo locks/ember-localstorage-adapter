@@ -268,7 +268,7 @@
     },
 
     loadData: function () {
-      var storage = localStorage.getItem(this.adapterNamespace());
+      var storage = this.getLocalStorage().getItem(this.adapterNamespace());
       return storage ? JSON.parse(storage) : {};
     },
 
@@ -278,7 +278,38 @@
 
       localStorageData[modelNamespace] = data;
 
-      localStorage.setItem(this.adapterNamespace(), JSON.stringify(localStorageData));
+      this.getLocalStorage().setItem(this.adapterNamespace(), JSON.stringify(localStorageData));
+    },
+
+    getLocalStorage: function() {
+      if (this._localStorage) { return this._localStorage; }
+
+      var storage;
+      try {
+        storage = this.getNativeStorage() || this._enableInMemoryStorage();
+      } catch (e) {
+        storage = this._enableInMemoryStorage(e);
+      }
+
+      return this._localStorage = storage;
+    },
+
+    _enableInMemoryStorage: function(reason) {
+      this.trigger('persistenceUnavailable', reason);
+      return {
+        storage: {},
+        getItem: function(name) {
+          return this.storage[name];
+        },
+        setItem: function(name, value) {
+          this.storage[name] = value;
+        }
+      };
+    },
+
+    // This exists primarily as a testing extension point
+    getNativeStorage: function() {
+      return localStorage;
     },
 
     _namespaceForType: function (type) {

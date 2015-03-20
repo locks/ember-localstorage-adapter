@@ -443,7 +443,33 @@ test('date is loaded correctly', function() {
       start();
     });
   });
-})
+});
+
+test('handles localStorage being unavailable', function() {
+  expect(3);
+
+  var handler = sinon.spy();
+  var adapter = store.get('defaultAdapter');
+  var exception = new Error('Nope.');
+
+  // We can't actually disable localStorage in PhantomJS, so emulate as closely as possible by
+  // causing a wrapper method on the adapter to throw.
+  adapter.getNativeStorage = function() { throw exception; };
+  adapter.on('persistenceUnavailable', handler);
+
+  var person = store.createRecord('person', { id: 'tom', name: 'Tom' });
+  ok(handler.notCalled, 'Should not trigger `persistenceUnavailable` until actually trying to persist');
+
+  stop();
+  person.save().then(function() {
+    ok(handler.calledWith(exception), 'Saving a record without local storage should trigger `persistenceUnavailable`');
+    store.unloadRecord(person);
+    return store.find('person', 'tom');
+  }).then(function(reloadedPerson) {
+    equal(reloadedPerson.get('name'), 'Tom', 'Records should still persist in-memory without local storage');
+    start();
+  });
+});
 
 // This crashes chrome.
 // TODO: Figure out a way to test this without using so much memory.

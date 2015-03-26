@@ -20,7 +20,7 @@
     "vendor"
   ],
   "dependencies": {
-    "ember-data": ">= 1.0.0-beta.15",
+    "ember-data": ">= 1.0.0-beta.16.1",
     "ember": ">= 1.9.0"
   }
 }

@@ -223,10 +223,9 @@
       return Ember.RSVP.resolve(results);
     },
 
-    createRecord: function (store, type, record) {
+    createRecord: function (store, type, snapshot) {
       var namespaceRecords = this._namespaceForType(type);
       var serializer = store.serializerFor(type.typeKey);
-      var snapshot = record._createSnapshot();
       var recordHash = serializer.serialize(snapshot, {includeId: true});
 
       namespaceRecords.records[recordHash.id] = recordHash;
@@ -235,11 +234,10 @@
       return Ember.RSVP.resolve();
     },
 
-    updateRecord: function (store, type, record) {
+    updateRecord: function (store, type, snapshot) {
       var namespaceRecords = this._namespaceForType(type);
-      var id = record.get('id');
+      var id = snapshot.id;
       var serializer = store.serializerFor(type.typeKey);
-      var snapshot = record._createSnapshot();
 
       namespaceRecords.records[id] = serializer.serialize(snapshot, {includeId: true});
 
@@ -247,9 +245,9 @@
       return Ember.RSVP.resolve();
     },
 
-    deleteRecord: function (store, type, record) {
+    deleteRecord: function (store, type, snapshot) {
       var namespaceRecords = this._namespaceForType(type);
-      var id = record.get('id');
+      var id = snapshot.id;
 
       delete namespaceRecords.records[id];
 

@@ -43,7 +43,7 @@ DS.LSAdapter.create({
 ### Models
 
 Whenever the adapter returns a record, it'll also return all
-relationships, so __do not__ use `{async: true}` in you model definitions.
+relationships, so __do not__ use `{async: true}` in your model definitions.
 
 #### Namespace
 

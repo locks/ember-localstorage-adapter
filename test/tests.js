@@ -2,7 +2,7 @@
 var get = Ember.get,
     App = {};
 
-var store;
+var store, registry;
 
 function stringify(string){
   return function(){ return string };
@@ -50,6 +50,7 @@ module('DS.LSAdapter', {
       adapter: DS.LSAdapter
     });
     store = env.store;
+    registry = env.registry;
   }
 });
 
@@ -385,7 +386,7 @@ test('saves hasMany', function() {
 });
 
 test("serializeHasMany respects keyForRelationship", function() {
-  store.get('container').register('serializer:list', DS.LSSerializer.extend({
+  registry.register('serializer:list', DS.LSSerializer.extend({
     keyForRelationship: function(key, type) {
       return key.toUpperCase();
     }
@@ -402,13 +403,13 @@ test("serializeHasMany respects keyForRelationship", function() {
     ITEMS: ["1"]
   });
 
-  store.get('container').unregister('serializer:list')
+  registry.unregister('serializer:list')
 });
 
 test("extractArray calls extractSingle", function() {
   var callback = sinon.stub();
 
-  store.get('container').register('serializer:list', DS.LSSerializer.extend({
+  registry.register('serializer:list', DS.LSSerializer.extend({
     extractSingle: function(store, type, payload) {
       callback();
       return this.normalize(type, payload);
@@ -424,7 +425,7 @@ test("extractArray calls extractSingle", function() {
     start();
   });
 
-  store.get('container').unregister('serializer:list')
+  registry.unregister('serializer:list')
 });
 
 test('date is loaded correctly', function() {

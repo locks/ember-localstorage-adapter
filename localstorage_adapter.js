@@ -50,21 +50,21 @@
      * @method extractSingle
      * @private
      * @param {DS.Store} store the returned store
-     * @param {DS.Model} type the type/model
+     * @param {DS.Model} model the model
      * @param {Object} payload returned JSON
      */
-    extractSingle: function(store, type, payload) {
+    extractSingle: function(store, model, payload) {
       if (payload && payload._embedded) {
         for (var relation in payload._embedded) {
-          var relType = type.typeForRelationship(relation);
-          var typeName = relType.typeKey,
+          var relType = model.typeForRelationship(relation);
+          var modelName = relType.modelName,
               embeddedPayload = payload._embedded[relation];
 
           if (embeddedPayload) {
             if (Ember.isArray(embeddedPayload)) {
-              store.pushMany(typeName, embeddedPayload);
+              store.pushMany(modelName, embeddedPayload);
             } else {
-              store.push(typeName, embeddedPayload);
+              store.push(modelName, embeddedPayload);
             }
           }
         }
@@ -72,7 +72,7 @@
         delete payload._embedded;
       }
 
-      return this.normalize(type, payload);
+      return this.normalize(model, payload);
     },
 
     /**
@@ -81,12 +81,12 @@
      * @method extractSingle
      * @private
      * @param {DS.Store} store the returned store
-     * @param {DS.Model} type the type/model
+     * @param {DS.Model} model the model
      * @param {Array} payload returned JSONs
      */
-    extractArray: function(store, type, payload) {
+    extractArray: function(store, model, payload) {
       return payload.map(function(json) {
-        return this.extractSingle(store, type, json);
+        return this.extractSingle(store, model, json);
       }, this);
     }
 
@@ -98,12 +98,12 @@
       this method is the model's name as a string.
 
       @method find
-      @param {DS.Model} type
+      @param {DS.Model} model
       @param {Object|String|Integer|null} id
       */
-    find: function(store, type, id, opts) {
+    find: function(store, model, id, opts) {
       var allowRecursive = true;
-      var namespace = this._namespaceForType(type);
+      var namespace = this._namespaceForType(model);
       var record = Ember.A(namespace.records[id]);
 
       /**
@@ -120,19 +120,19 @@
 
       if (!record || !record.hasOwnProperty('id')) {
         return Ember.RSVP.reject(new Error("Couldn't find record of"
-                                           + " type '" + type.typeKey
+                                           + " model '" + model.modelName
                                            + "' for the id '" + id + "'."));
       }
 
       if (allowRecursive) {
-        return this.loadRelationships(type, record);
+        return this.loadRelationships(model, record);
       } else {
         return Ember.RSVP.resolve(record);
       }
     },
 
-    findMany: function (store, type, ids, opts) {
-      var namespace = this._namespaceForType(type);
+    findMany: function (store, model, ids, opts) {
+      var namespace = this._namespaceForType(model);
       var adapter = this,
           allowRecursive = true,
           results = [], record;
@@ -152,14 +152,14 @@
       for (var i = 0; i < ids.length; i++) {
         record = namespace.records[ids[i]];
         if (!record || !record.hasOwnProperty('id')) {
-          return Ember.RSVP.reject(new Error("Couldn't find record of type '" + type.typeKey
+          return Ember.RSVP.reject(new Error("Couldn't find record of model '" + model.modelName
                                              + "' for the id '" + ids[i] + "'."));
         }
         results.push(Ember.copy(record));
       }
 
       if (results.get('length') && allowRecursive) {
-        return this.loadRelationshipsForMany(type, results);
+        return this.loadRelationshipsForMany(model, results);
       } else {
         return Ember.RSVP.resolve(results);
       }
@@ -179,12 +179,12 @@
     //  match records with "complete: true" and the name "foo" or "bar"
     //
     //    { complete: true, name: /foo|bar/ }
-    findQuery: function (store, type, query, recordArray) {
-      var namespace = this._namespaceForType(type);
+    findQuery: function (store, model, query, recordArray) {
+      var namespace = this._namespaceForType(model);
       var results = this.query(namespace.records, query);
 
       if (results.get('length')) {
-        return this.loadRelationshipsForMany(type, results);
+        return this.loadRelationshipsForMany(model, results);
       } else {
         return Ember.RSVP.reject();
       }
@@ -213,8 +213,8 @@
       return results;
     },
 
-    findAll: function (store, type) {
-      var namespace = this._namespaceForType(type),
+    findAll: function (store, model) {
+      var namespace = this._namespaceForType(model),
           results = [];
 
       for (var id in namespace.records) {
@@ -223,35 +223,35 @@
       return Ember.RSVP.resolve(results);
     },
 
-    createRecord: function (store, type, snapshot) {
-      var namespaceRecords = this._namespaceForType(type);
-      var serializer = store.serializerFor(type.typeKey);
+    createRecord: function (store, model, snapshot) {
+      var namespaceRecords = this._namespaceForType(model);
+      var serializer = store.serializerFor(model.modelName);
       var recordHash = serializer.serialize(snapshot, {includeId: true});
 
       namespaceRecords.records[recordHash.id] = recordHash;
 
-      this.persistData(type, namespaceRecords);
+      this.persistData(model, namespaceRecords);
       return Ember.RSVP.resolve();
     },
 
-    updateRecord: function (store, type, snapshot) {
-      var namespaceRecords = this._namespaceForType(type);
+    updateRecord: function (store, model, snapshot) {
+      var namespaceRecords = this._namespaceForType(model);
       var id = snapshot.id;
-      var serializer = store.serializerFor(type.typeKey);
+      var serializer = store.serializerFor(model.modelName);
 
       namespaceRecords.records[id] = serializer.serialize(snapshot, {includeId: true});
 
-      this.persistData(type, namespaceRecords);
+      this.persistData(model, namespaceRecords);
       return Ember.RSVP.resolve();
     },
 
-    deleteRecord: function (store, type, snapshot) {
-      var namespaceRecords = this._namespaceForType(type);
+    deleteRecord: function (store, model, snapshot) {
+      var namespaceRecords = this._namespaceForType(model);
       var id = snapshot.id;
 
       delete namespaceRecords.records[id];
 
-      this.persistData(type, namespaceRecords);
+      this.persistData(model, namespaceRecords);
       return Ember.RSVP.resolve();
     },
 
@@ -270,8 +270,8 @@
       return storage ? JSON.parse(storage) : {};
     },
 
-    persistData: function(type, data) {
-      var modelNamespace = this.modelNamespace(type);
+    persistData: function(model, data) {
+      var modelNamespace = this.modelNamespace(model);
       var localStorageData = this.loadData();
 
       localStorageData[modelNamespace] = data;
@@ -310,15 +310,15 @@
       return localStorage;
     },
 
-    _namespaceForType: function (type) {
-      var namespace = this.modelNamespace(type);
+    _namespaceForType: function (model) {
+      var namespace = this.modelNamespace(model);
       var storage   = this.loadData();
 
       return storage[namespace] || {records: {}};
     },
 
-    modelNamespace: function(type) {
-      return type.url || type.typeKey;
+    modelNamespace: function(model) {
+      return model.url || model.modelName;
     },
 
 
@@ -361,13 +361,13 @@
      *
      * @method loadRelationships
      * @private
-     * @param {DS.Model} type
+     * @param {DS.Model} model
      * @param {Object} record
      */
-    loadRelationships: function(type, record) {
+    loadRelationships: function(model, record) {
       var adapter = this,
           resultJSON = {},
-          typeKey = type.typeKey,
+          modelName = model.modelName,
           relationshipNames, relationships,
           relationshipPromises = [];
 
@@ -378,16 +378,16 @@
        */
       var recordPromise = Ember.RSVP.resolve(record);
 
-      relationshipNames = Ember.get(type, 'relationshipNames');
+      relationshipNames = Ember.get(model, 'relationshipNames');
       relationships = relationshipNames.belongsTo
         .concat(relationshipNames.hasMany);
 
       relationships.forEach(function(relationName) {
-        var relationModel = type.typeForRelationship(relationName);
+        var relationModel = model.typeForRelationship(relationName);
         var relationEmbeddedId = record[relationName];
-        var relationProp  = adapter.relationshipProperties(type, relationName);
+        var relationProp  = adapter.relationshipProperties(model, relationName);
         var relationType  = relationProp.kind;
-        var foreignAdapter = type.store.adapterFor(relationModel);
+        var foreignAdapter = model.store.adapterFor(relationModel);
 
         var opts = {allowRecursive: false};
 
@@ -500,10 +500,10 @@
      *
      * @method loadRelationshipsForMany
      * @private
-     * @param {DS.Model} type
+     * @param {DS.Model} model
      * @param {Object} recordsArray
      */
-    loadRelationshipsForMany: function(type, recordsArray) {
+    loadRelationshipsForMany: function(model, recordsArray) {
       var adapter = this,
           promise = Ember.RSVP.resolve([]);
 
@@ -513,7 +513,7 @@
        */
       recordsArray.forEach(function(record) {
         promise = promise.then(function(records) {
-          return adapter.loadRelationships(type, record)
+          return adapter.loadRelationships(model, record)
             .then(function(loadedRecord) {
               records.push(loadedRecord);
               return records;
@@ -529,11 +529,11 @@
      *
      * @method relationshipProperties
      * @private
-     * @param {DS.Model} type
+     * @param {DS.Model} model
      * @param {String} relationName
      */
-    relationshipProperties: function(type, relationName) {
-      var relationships = Ember.get(type, 'relationshipsByName');
+    relationshipProperties: function(model, relationName) {
+      var relationships = Ember.get(model, 'relationshipsByName');
       if (relationName) {
         return relationships.get(relationName);
       } else {

@@ -13,7 +13,7 @@
       if (relationshipType === 'manyToNone' ||
           relationshipType === 'manyToMany' ||
           relationshipType === 'manyToOne') {
-        json[payloadKey] = snapshot.hasMany(key).mapBy('id');
+        json[payloadKey] = snapshot.hasMany(key, { ids: true });
         // TODO support for polymorphic manyToNone and manyToMany relationships
       }
     },
@@ -56,8 +56,8 @@
     extractSingle: function(store, type, payload) {
       if (payload && payload._embedded) {
         for (var relation in payload._embedded) {
-          var relType = type.typeForRelationship(relation);
-          var typeName = relType.typeKey,
+          var relType = type.typeForRelationship(relation,store);
+          var typeName = relType.modelName,
               embeddedPayload = payload._embedded[relation];
 
           if (embeddedPayload) {
@@ -120,12 +120,12 @@
 
       if (!record || !record.hasOwnProperty('id')) {
         return Ember.RSVP.reject(new Error("Couldn't find record of"
-                                           + " type '" + type.typeKey
+                                           + " type '" + type.modelName
                                            + "' for the id '" + id + "'."));
       }
 
       if (allowRecursive) {
-        return this.loadRelationships(type, record);
+        return this.loadRelationships(store, type, record);
       } else {
         return Ember.RSVP.resolve(record);
       }
@@ -152,14 +152,14 @@
       for (var i = 0; i < ids.length; i++) {
         record = namespace.records[ids[i]];
         if (!record || !record.hasOwnProperty('id')) {
-          return Ember.RSVP.reject(new Error("Couldn't find record of type '" + type.typeKey
+          return Ember.RSVP.reject(new Error("Couldn't find record of type '" + type.modelName
                                              + "' for the id '" + ids[i] + "'."));
         }
         results.push(Ember.copy(record));
       }
 
       if (results.get('length') && allowRecursive) {
-        return this.loadRelationshipsForMany(type, results);
+        return this.loadRelationshipsForMany(store, type, results);
       } else {
         return Ember.RSVP.resolve(results);
       }
@@ -184,7 +184,7 @@
       var results = this.query(namespace.records, query);
 
       if (results.get('length')) {
-        return this.loadRelationshipsForMany(type, results);
+        return this.loadRelationshipsForMany(store, type, results);
       } else {
         return Ember.RSVP.reject();
       }
@@ -225,7 +225,7 @@
 
     createRecord: function (store, type, snapshot) {
       var namespaceRecords = this._namespaceForType(type);
-      var serializer = store.serializerFor(type.typeKey);
+      var serializer = store.serializerFor(type.modelName);
       var recordHash = serializer.serialize(snapshot, {includeId: true});
 
       namespaceRecords.records[recordHash.id] = recordHash;
@@ -237,7 +237,7 @@
     updateRecord: function (store, type, snapshot) {
       var namespaceRecords = this._namespaceForType(type);
       var id = snapshot.id;
-      var serializer = store.serializerFor(type.typeKey);
+      var serializer = store.serializerFor(type.modelName);
 
       namespaceRecords.records[id] = serializer.serialize(snapshot, {includeId: true});
 
@@ -318,7 +318,7 @@
     },
 
     modelNamespace: function(type) {
-      return type.url || type.typeKey;
+      return type.url || type.modelName;
     },
 
 
@@ -364,10 +364,10 @@
      * @param {DS.Model} type
      * @param {Object} record
      */
-    loadRelationships: function(type, record) {
+    loadRelationships: function(store, type, record) {
       var adapter = this,
           resultJSON = {},
-          typeKey = type.typeKey,
+          modelName = type.modelName,
           relationshipNames, relationships,
           relationshipPromises = [];
 
@@ -383,11 +383,11 @@
         .concat(relationshipNames.hasMany);
 
       relationships.forEach(function(relationName) {
-        var relationModel = type.typeForRelationship(relationName);
+        var relationModel = type.typeForRelationship(relationName,store);
         var relationEmbeddedId = record[relationName];
         var relationProp  = adapter.relationshipProperties(type, relationName);
         var relationType  = relationProp.kind;
-        var foreignAdapter = type.store.adapterFor(relationModel);
+        var foreignAdapter = store.adapterFor(relationName);
 
         var opts = {allowRecursive: false};
 
@@ -503,7 +503,7 @@
      * @param {DS.Model} type
      * @param {Object} recordsArray
      */
-    loadRelationshipsForMany: function(type, recordsArray) {
+    loadRelationshipsForMany: function(store, type, recordsArray) {
       var adapter = this,
           promise = Ember.RSVP.resolve([]);
 
@@ -513,7 +513,7 @@
        */
       recordsArray.forEach(function(record) {
         promise = promise.then(function(records) {
-          return adapter.loadRelationships(type, record)
+          return adapter.loadRelationships(store, type, record)
             .then(function(loadedRecord) {
               records.push(loadedRecord);
               return records;

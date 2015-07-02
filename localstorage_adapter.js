@@ -387,7 +387,7 @@
         var relationEmbeddedId = record[relationName];
         var relationProp  = adapter.relationshipProperties(type, relationName);
         var relationType  = relationProp.kind;
-        var foreignAdapter = store.adapterFor(relationName);
+        var foreignAdapter = store.adapterFor(relationModel);
 
         var opts = {allowRecursive: false};
 

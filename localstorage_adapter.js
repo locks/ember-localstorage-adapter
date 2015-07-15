@@ -13,7 +13,18 @@
       if (relationshipType === 'manyToNone' ||
           relationshipType === 'manyToMany' ||
           relationshipType === 'manyToOne') {
-        json[payloadKey] = snapshot.hasMany(key, { ids: true });
+
+        var hasManys = snapshot.hasMany(key);
+
+        if (relationship.options.polymorphic) {
+          json[payloadKey] = hasManys.map( function (item) {
+            return { id: item.id, 'type': item.modelName };
+          });
+        } else {
+          json[payloadKey] = hasManys.mapBy('id');
+        }
+
+
         // TODO support for polymorphic manyToNone and manyToMany relationships
       }
     },

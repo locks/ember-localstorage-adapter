@@ -63,7 +63,7 @@ test('find with id', function() {
   expect(3);
 
   stop();
-  store.find('list', 'l1').then(function(list) {
+  store.findRecord('list', 'l1').then(function(list) {
     equal(get(list, 'id'),   'l1',  'id is loaded correctly');
     equal(get(list, 'name'), 'one', 'name is loaded correctly');
     equal(get(list, 'b'),    true,  'b is loaded correctly');
@@ -75,42 +75,42 @@ test('#find - rejects promise when non-existing record', function () {
   expect(1);
 
   stop();
-  store.find("list", "unknown").catch(function () {
+  store.findRecord("list", "unknown").catch(function () {
     ok(true);
     start();
   });
 });
 
-test('findQuery', function() {
+test('query', function() {
 
   stop();
-  store.findQuery('list', {name: /one|two/}).then(function(records) {
+  store.query('list', {name: /one|two/}).then(function(records) {
     equal(get(records, 'length'), 2, 'found results for /one|two/');
     start();
   });
 
   stop();
-  store.findQuery('list', {name: /.+/, id: /l1/}).then(function(records) {
+  store.query('list', {name: /.+/, id: /l1/}).then(function(records) {
     equal(get(records, 'length'), 1, 'found results for {name: /.+/, id: /l1/}');
     start();
   });
 
   stop();
-  store.findQuery('list', {name: 'one'}).then(function(records) {
+  store.query('list', {name: 'one'}).then(function(records) {
     equal(get(records, 'length'), 1, 'found results for name "one"');
     start();
   });
 
   stop();
-  store.findQuery('list', {b: true}).then(function(records) {
+  store.query('list', {b: true}).then(function(records) {
     equal(get(records, 'length'), 1, 'found results for {b: true}');
     start();
   });
 });
 
-test('#findQuery - rejects promise when there are no records', function() {
+test('#query - rejects promise when there are no records', function() {
   stop();
-  store.findQuery('list', {name: /unknown/}).catch(function() {
+  store.query('list', {name: /unknown/}).catch(function() {
     ok(true);
     equal(store.hasRecordForId("list", "unknown"), false);
     start();
@@ -136,10 +136,10 @@ test('findAll', function() {
   });
 });
 
-test('findQueryMany', function() {
+test('queryMany', function() {
   expect(11);
   stop();
-  store.find('order', { b: true }).then(function(records) {
+  store.query('order', { b: true }).then(function(records) {
     var firstRecord = records.objectAt(0),
         secondRecord = records.objectAt(1),
         thirdRecord = records.objectAt(2);
@@ -175,7 +175,7 @@ test('createRecord', function() {
   list = store.createRecord('list', { name: 'Rambo' });
 
   list.save().then(function() {
-    store.findQuery('list', { name: 'Rambo' }).then(function(records) {
+    store.query('list', { name: 'Rambo' }).then(function(records) {
       var record = records.objectAt(0);
 
       equal(get(records, 'length'), 1, "Only Rambo was found");
@@ -184,7 +184,7 @@ test('createRecord', function() {
     });
 
     list.save().then(function() {
-      store.find('list', list.id).then(function(record) {
+      store.findRecord('list', list.id).then(function(record) {
         equal(get(record,  'name'),  "Rambo", "Correct name");
         equal(get(record,  'id'),    list.id, "Correct, original id");
 
@@ -200,7 +200,7 @@ test('updateRecords', function() {
   list = store.createRecord('list', { name: 'Rambo' });
 
   var UpdateList = function(list) {
-    return store.findQuery('list', { name: 'Rambo' }).then(function(records) {
+    return store.query('list', { name: 'Rambo' }).then(function(records) {
       var record = records.objectAt(0);
       record.set('name', 'Macgyver');
       return record.save();
@@ -208,7 +208,7 @@ test('updateRecords', function() {
   }
 
   var AssertListIsUpdated = function() {
-    return store.findQuery('list', { name: 'Macgyver' }).then(function(records) {
+    return store.query('list', { name: 'Macgyver' }).then(function(records) {
       var record = records.objectAt(0);
 
       equal(get(records, 'length'), 1,         "Only one record was found");
@@ -227,13 +227,13 @@ test('deleteRecord', function() {
   expect(2);
   stop();
   var AssertListIsDeleted = function() {
-    return store.findQuery('list', { name: 'one' }).catch(function() {
+    return store.query('list', { name: 'one' }).catch(function() {
       ok(true, "List was deleted");
       start();
     });
   }
 
-  store.findQuery('list', { name: 'one' }).then(function(lists) {
+  store.query('list', { name: 'one' }).then(function(lists) {
     var list = lists.objectAt(0);
 
     equal(get(list, "id"), "l1", "Item exists");
@@ -247,8 +247,8 @@ test('deleteRecord', function() {
 test('changes in bulk', function() {
   stop();
   var promises,
-      listToUpdate = store.find('list', 'l1'),
-      listToDelete = store.find('list', 'l2'),
+      listToUpdate = store.findRecord('list', 'l1'),
+      listToDelete = store.findRecord('list', 'l2'),
       listToCreate = store.createRecord('list', { name: 'Rambo' });
 
   var UpdateList = function(list) {
@@ -275,8 +275,8 @@ test('changes in bulk', function() {
 
     return promises;
   }).then(function() {
-    var updatedList = store.find('list', 'l1'),
-        createdList = store.findQuery('list', {name: 'Rambo'}),
+    var updatedList = store.findRecord('list', 'l1'),
+        createdList = store.query('list', {name: 'Rambo'}),
         promises    = Ember.A();
 
     createdList.then(function(lists) {
@@ -284,7 +284,7 @@ test('changes in bulk', function() {
       promises.push(new Ember.RSVP.Promise(function(){}));
     });
 
-    store.find('list', 'l2').then(function(list) {
+    store.findRecord('list', 'l2').then(function(list) {
       equal(get(list, 'length'), undefined, "Record was deleted successfully");
       promises.push(new Ember.RSVP.Promise(function(){}));
     });
@@ -310,7 +310,7 @@ test('load hasMany association', function() {
   expect(4);
   stop();
 
-  store.find('list', 'l1').then(function(list) {
+  store.findRecord('list', 'l1').then(function(list) {
     var items = list.get('items');
 
     var item1 = items.get('firstObject'),
@@ -328,7 +328,7 @@ test('load hasMany association', function() {
 test('load belongsTo association', function() {
   stop();
 
-  store.find('item', 'i1').then(function(item) {
+  store.findRecord('item', 'i1').then(function(item) {
     return new Ember.RSVP.Promise(function(resolve) { resolve(get(item, 'list')); });
   }).then(function(list) {
     equal(get(list, 'id'), 'l1', "id is loaded correctly");
@@ -344,14 +344,14 @@ test('saves belongsTo', function() {
 
   stop();
 
-  store.find('list', listId).then(function(list) {
+  store.findRecord('list', listId).then(function(list) {
     item = store.createRecord('item', { name: 'three thousand' });
     item.set('list', list);
 
     return item.save();
   }).then(function(item) {
     store.unloadAll('item');
-    return store.find('item', item.get('id'));
+    return store.findRecord('item', item.get('id'));
   }).then(function(item) {
     var list = item.get('list');
     ok(item.get('list'), 'list is present');
@@ -366,7 +366,7 @@ test('saves hasMany', function() {
 
   stop();
 
-  store.find('list', listId).then(function(list) {
+  store.findRecord('list', listId).then(function(list) {
     item = store.createRecord('item', { name: 'three thousand' });
     list.get('items').pushObject(item);
 
@@ -375,7 +375,7 @@ test('saves hasMany', function() {
     return item.save();
   }).then(function(item) {
     store.unloadAll('list');
-    return store.find('list', listId);
+    return store.findRecord('list', listId);
   }).then(function(list) {
     var items = list.get('items'),
         item1 = items.objectAt(0);
@@ -419,7 +419,7 @@ test("extractArray calls extractSingle", function() {
   expect(1);
   stop();
 
-  store.find('list').then(function(lists) {
+  store.findRecord('list').then(function(lists) {
     equal(callback.callCount, 3);
     
     start();
@@ -436,7 +436,7 @@ test('date is loaded correctly', function() {
   
   var person = store.createRecord('person', { name: 'Tom', birthdate: date });
   person.save().then(function() {
-    store.find('person', { name: 'Tom' }).then(function(records) {
+    store.query('person', { name: 'Tom' }).then(function(records) {
       var loadedPerson = records.get('firstObject');
       var birthdate = get(loadedPerson, 'birthdate');
       ok((birthdate instanceof Date), 'Date should be loaded as an instance of Date');
@@ -465,7 +465,7 @@ test('handles localStorage being unavailable', function() {
   person.save().then(function() {
     ok(handler.calledWith(exception), 'Saving a record without local storage should trigger `persistenceUnavailable`');
     store.unloadRecord(person);
-    return store.find('person', 'tom');
+    return store.findRecord('person', 'tom');
   }).then(function(reloadedPerson) {
     equal(reloadedPerson.get('name'), 'Tom', 'Records should still persist in-memory without local storage');
     start();

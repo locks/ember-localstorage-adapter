@@ -355,7 +355,7 @@ test('saves belongsTo', function() {
   }).then(function(item) {
     var list = item.get('list');
     ok(item.get('list'), 'list is present');
-    equal(list.id, listId, 'list is retrieved correctly');
+    equal(list.get('id'), listId, 'list is retrieved correctly');
     start();
   });
 });

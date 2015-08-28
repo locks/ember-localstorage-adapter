@@ -348,10 +348,10 @@ test('saves belongsTo', function() {
     item = store.createRecord('item', { name: 'three thousand' });
     item.set('list', list);
 
-    return item.save();
-  }).then(function(item) {
+    return Ember.RSVP.all([list.save(),item.save()]);
+  }).then(function(rsvpSaved) {
     store.unloadAll('item');
-    return store.findRecord('item', item.get('id'));
+    return store.findRecord('item', rsvpSaved[1].get('id'));
   }).then(function(item) {
     var list = item.get('list');
     ok(item.get('list'), 'list is present');
@@ -406,11 +406,11 @@ test("serializeHasMany respects keyForRelationship", function() {
   registry.unregister('serializer:list')
 });
 
-test("extractArray calls extractSingle", function() {
+test("normalizeArrayResponse calls normalizeSingleResponse", function() {
   var callback = sinon.stub();
 
   registry.register('serializer:list', DS.LSSerializer.extend({
-    extractSingle: function(store, type, payload) {
+    normalizeSingleResponse: function(store, type, payload) {
       callback();
       return this.normalize(type, payload);
     }
@@ -419,9 +419,9 @@ test("extractArray calls extractSingle", function() {
   expect(1);
   stop();
 
-  store.findRecord('list').then(function(lists) {
+  store.findAll('list').then(function(lists) {
     equal(callback.callCount, 3);
-    
+
     start();
   });
 
@@ -433,7 +433,7 @@ test('date is loaded correctly', function() {
   stop();
 
   var date = new Date(1988, 11, 28);
-  
+
   var person = store.createRecord('person', { name: 'Tom', birthdate: date });
   person.save().then(function() {
     store.query('person', { name: 'Tom' }).then(function(records) {
@@ -496,4 +496,3 @@ test('handles localStorage being unavailable', function() {
 //   // clean up
 //   localStorage.removeItem('junk');
 // });
-

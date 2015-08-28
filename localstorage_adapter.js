@@ -4,7 +4,7 @@
   'use strict';
 
   DS.LSSerializer = DS.JSONSerializer.extend({
-	  
+
 	 /**
      * Invokes the new serializer API.
      * This should be removed in 2.0
@@ -23,7 +23,7 @@
         // TODO support for polymorphic manyToNone and manyToMany relationships
       }
     },
-	
+
 	/**
      * Extracts whatever was returned from the adapter.
      *
@@ -84,7 +84,7 @@
       }
       return normalPayload;
     },
-	
+
 	/**
      * This is exactly the same as extractSingle, but used in an array.
      *
@@ -116,6 +116,26 @@
   });
 
   DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
+
+    /**
+    * This governs if promises will be resolved immeadiatly for `findAll`
+    * requests or if they will wait for the store requests to finish. This matches
+    * the ember < 2.0 behavior.
+    * [deprecation id: ds.adapter.should-reload-all-default-behavior]
+    */
+    shouldReloadAll: function(modelClass, snapshotArray){
+      return true;
+    },
+
+    /**
+     * Conforms to ember <2.0 behavior, in order to remove deprecation.
+     * Probably safe to remove if running on ember 2.0
+     * [deprecation id: ds.model.relationship-changing-to-asynchrounous-by-default]
+     */
+    shouldBackgroundReloadRecord: function(){
+      return false;
+    },
+
     /**
       This is the main entry point into finding records. The first parameter to
       this method is the model's name as a string.

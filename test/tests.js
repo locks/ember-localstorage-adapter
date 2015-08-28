@@ -16,24 +16,24 @@ module('DS.LSAdapter', {
     App.List = DS.Model.extend({
       name: DS.attr('string'),
       b: DS.attr('boolean'),
-      items: DS.hasMany('item')
+      items: DS.hasMany('item', {async: true})
     });
 
     App.Item = DS.Model.extend({
       name: DS.attr('string'),
-      list: DS.belongsTo('list')
+      list: DS.belongsTo('list', {async: true})
     });
 
     App.Order = DS.Model.extend({
       name: DS.attr('string'),
       b: DS.attr('boolean'),
-      hours: DS.hasMany('hour')
+      hours: DS.hasMany('hour', {async: true})
     });
 
     App.Hour = DS.Model.extend({
       name: DS.attr('string'),
       amount: DS.attr('number'),
-      order: DS.belongsTo('order')
+      order: DS.belongsTo('order', {async: true})
     });
 
     App.Person = DS.Model.extend({
@@ -421,7 +421,7 @@ test("extractArray calls extractSingle", function() {
 
   store.findRecord('list').then(function(lists) {
     equal(callback.callCount, 3);
-    
+
     start();
   });
 
@@ -433,7 +433,7 @@ test('date is loaded correctly', function() {
   stop();
 
   var date = new Date(1988, 11, 28);
-  
+
   var person = store.createRecord('person', { name: 'Tom', birthdate: date });
   person.save().then(function() {
     store.query('person', { name: 'Tom' }).then(function(records) {
@@ -496,4 +496,3 @@ test('handles localStorage being unavailable', function() {
 //   // clean up
 //   localStorage.removeItem('junk');
 // });
-

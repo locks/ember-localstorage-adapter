@@ -37,10 +37,10 @@ var FIXTURES = {
 
 var logLS = function() {
   console.log(localStorage.getItem('DS.LSAdapter'));
-}
+};
 
-var cl = function(msg) { console.log(msg); }
-var ct = function(msg) { console.table(msg); }
+var cl = function(msg) { console.log(msg); };
+var ct = function(msg) { console.table(msg); };
 
 var setupStore = function(options) {
   var container, registry;
@@ -106,4 +106,3 @@ DS.JSONSerializer.reopen({
     return this._super(attributeType, true) || transforms[attributeType];
   }
 });
-

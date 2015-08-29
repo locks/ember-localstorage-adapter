@@ -1,3 +1,4 @@
+/* jshint node: true */
 'use strict';
 
 var path = require('path');
@@ -34,4 +35,4 @@ function unwatchedTree(dir) {
     read:    function() { return dir; },
     cleanup: function() { }
   };
-};
+}

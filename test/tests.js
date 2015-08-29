@@ -5,7 +5,7 @@ var get = Ember.get,
 var store, registry;
 
 function stringify(string){
-  return function(){ return string };
+  return function(){ return string; };
 }
 
 module('DS.LSAdapter', {
@@ -205,7 +205,7 @@ test('updateRecords', function() {
       record.set('name', 'Macgyver');
       return record.save();
     });
-  }
+  };
 
   var AssertListIsUpdated = function() {
     return store.query('list', { name: 'Macgyver' }).then(function(records) {
@@ -217,7 +217,7 @@ test('updateRecords', function() {
 
       start();
     });
-  }
+  };
 
   list.save().then(UpdateList)
              .then(AssertListIsUpdated);
@@ -231,7 +231,7 @@ test('deleteRecord', function() {
       ok(true, "List was deleted");
       start();
     });
-  }
+  };
 
   store.query('list', { name: 'one' }).then(function(lists) {
     var list = lists.objectAt(0);
@@ -254,11 +254,11 @@ test('changes in bulk', function() {
   var UpdateList = function(list) {
     list.set('name', 'updated');
     return list;
-  }
+  };
   var DeleteList = function(list) {
     list.deleteRecord();
     return list;
-  }
+  };
 
   promises = [
     listToCreate,
@@ -403,7 +403,7 @@ test("serializeHasMany respects keyForRelationship", function() {
     ITEMS: ["1"]
   });
 
-  registry.unregister('serializer:list')
+  registry.unregister('serializer:list');
 });
 
 test("normalizeArrayResponse calls normalizeSingleResponse", function() {
@@ -425,7 +425,7 @@ test("normalizeArrayResponse calls normalizeSingleResponse", function() {
     start();
   });
 
-  registry.unregister('serializer:list')
+  registry.unregister('serializer:list');
 });
 
 test('date is loaded correctly', function() {

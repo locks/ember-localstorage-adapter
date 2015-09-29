@@ -4,7 +4,7 @@
   'use strict';
 
   DS.LSSerializer = DS.JSONSerializer.extend({
-	  
+
 	 /**
      * Invokes the new serializer API.
      * This should be removed in 2.0
@@ -23,7 +23,7 @@
         // TODO support for polymorphic manyToNone and manyToMany relationships
       }
     },
-	
+
 	/**
      * Extracts whatever was returned from the adapter.
      *
@@ -59,6 +59,11 @@
       var included = [];
 
       if (payload && payload._embedded) {
+        var _this = this;
+        var forEachFunc = function(record){
+          included.pushObject(_this.normalize(relType,record).data);
+        };
+
         for (var relation in payload._embedded) {
           var relType = type.typeForRelationship(relation,store);
           var typeName = relType.modelName,
@@ -66,9 +71,7 @@
 
           if (embeddedPayload) {
             if (Ember.isArray(embeddedPayload)) {
-              embeddedPayload.forEach(function(record) {
-                included.pushObject(this.normalize(relType,record).data);
-              }.bind(this));
+              embeddedPayload.forEach(forEachFunc);
             } else {
               included.pushObject(this.normalize(relType, embeddedPayload).data);
             }
@@ -80,11 +83,11 @@
 
       var normalPayload = this.normalize(type, payload);
       if(included.length > 0){
-        normalPayload['included'] = included;
+        normalPayload.included = included;
       }
       return normalPayload;
     },
-	
+
 	/**
      * This is exactly the same as extractSingle, but used in an array.
      *
@@ -96,9 +99,9 @@
      */
     normalizeArrayResponse: function(store, type, payload) {
        var response = { data: [], included: [] };
-
+       var _this = this;
       payload.forEach(function(json){
-        var normalized = this.normalizeSingleResponse(store, type, json);
+        var normalized = _this.normalizeSingleResponse(store, type, json);
         response.data.pushObject(normalized.data);
 
         if(normalized.included){
@@ -108,7 +111,7 @@
             }
           });
         }
-      }.bind(this));
+      });
 
       return response;
     }
@@ -142,9 +145,7 @@
       }
 
       if (!record || !record.hasOwnProperty('id')) {
-        return Ember.RSVP.reject(new Error("Couldn't find record of"
-                                           + " type '" + type.modelName
-                                           + "' for the id '" + id + "'."));
+        return Ember.RSVP.reject(new Error("Couldn't find record of" + " type '" + type.modelName + "' for the id '" + id + "'."));
       }
 
       if (allowRecursive) {
@@ -175,8 +176,7 @@
       for (var i = 0; i < ids.length; i++) {
         record = namespace.records[ids[i]];
         if (!record || !record.hasOwnProperty('id')) {
-          return Ember.RSVP.reject(new Error("Couldn't find record of type '" + type.modelName
-                                             + "' for the id '" + ids[i] + "'."));
+          return Ember.RSVP.reject(new Error("Couldn't find record of type '" + type.modelName + "' for the id '" + ids[i] + "'."));
         }
         results.push(Ember.copy(record));
       }
@@ -311,8 +311,8 @@
       } catch (e) {
         storage = this._enableInMemoryStorage(e);
       }
-
-      return this._localStorage = storage;
+      this._localStorage = storage;
+      return this._localStorage;
     },
 
     _enableInMemoryStorage: function(reason) {
@@ -492,11 +492,11 @@
       var isValidRelationship = (objectHasId || arrayHasIds);
 
       if (isValidRelationship) {
-        if (!payload['_embedded']) {
-          payload['_embedded'] = {};
+        if (!payload._embedded) {
+          payload._embedded = {};
         }
 
-        payload['_embedded'][relationshipName] = relationshipRecord;
+        payload._embedded[relationshipName] = relationshipRecord;
         if (relationshipRecord.length) {
           payload[relationshipName] = relationshipRecord.mapBy('id');
         } else {

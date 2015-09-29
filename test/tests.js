@@ -5,7 +5,7 @@ var get = Ember.get,
 var store, registry;
 
 function stringify(string){
-  return function(){ return string };
+  return function(){ return string; };
 }
 
 module('DS.LSAdapter', {
@@ -205,7 +205,7 @@ test('updateRecords', function() {
       record.set('name', 'Macgyver');
       return record.save();
     });
-  }
+  };
 
   var AssertListIsUpdated = function() {
     return store.query('list', { name: 'Macgyver' }).then(function(records) {
@@ -217,7 +217,7 @@ test('updateRecords', function() {
 
       start();
     });
-  }
+  };
 
   list.save().then(UpdateList)
              .then(AssertListIsUpdated);
@@ -231,7 +231,7 @@ test('deleteRecord', function() {
       ok(true, "List was deleted");
       start();
     });
-  }
+  };
 
   store.query('list', { name: 'one' }).then(function(lists) {
     var list = lists.objectAt(0);
@@ -254,11 +254,11 @@ test('changes in bulk', function() {
   var UpdateList = function(list) {
     list.set('name', 'updated');
     return list;
-  }
+  };
   var DeleteList = function(list) {
     list.deleteRecord();
     return list;
-  }
+  };
 
   promises = [
     listToCreate,
@@ -348,14 +348,14 @@ test('saves belongsTo', function() {
     item = store.createRecord('item', { name: 'three thousand' });
     item.set('list', list);
 
-    return item.save();
-  }).then(function(item) {
+    return Ember.RSVP.all([list.save(),item.save()]);
+  }).then(function(rsvpSaved) {
     store.unloadAll('item');
-    return store.findRecord('item', item.get('id'));
+    return store.findRecord('item', rsvpSaved[1].get('id'));
   }).then(function(item) {
     var list = item.get('list');
     ok(item.get('list'), 'list is present');
-    equal(list.id, listId, 'list is retrieved correctly');
+    equal(list.get('id'), listId, 'list is retrieved correctly');
     start();
   });
 });
@@ -403,14 +403,14 @@ test("serializeHasMany respects keyForRelationship", function() {
     ITEMS: ["1"]
   });
 
-  registry.unregister('serializer:list')
+  registry.unregister('serializer:list');
 });
 
-test("extractArray calls extractSingle", function() {
+test("normalizeArrayResponse calls normalizeSingleResponse", function() {
   var callback = sinon.stub();
 
   registry.register('serializer:list', DS.LSSerializer.extend({
-    extractSingle: function(store, type, payload) {
+    normalizeSingleResponse: function(store, type, payload) {
       callback();
       return this.normalize(type, payload);
     }
@@ -419,13 +419,13 @@ test("extractArray calls extractSingle", function() {
   expect(1);
   stop();
 
-  store.findRecord('list').then(function(lists) {
+  store.findAll('list').then(function(lists) {
     equal(callback.callCount, 3);
-    
+
     start();
   });
 
-  registry.unregister('serializer:list')
+  registry.unregister('serializer:list');
 });
 
 test('date is loaded correctly', function() {
@@ -433,7 +433,7 @@ test('date is loaded correctly', function() {
   stop();
 
   var date = new Date(1988, 11, 28);
-  
+
   var person = store.createRecord('person', { name: 'Tom', birthdate: date });
   person.save().then(function() {
     store.query('person', { name: 'Tom' }).then(function(records) {
@@ -496,4 +496,3 @@ test('handles localStorage being unavailable', function() {
 //   // clean up
 //   localStorage.removeItem('junk');
 // });
-

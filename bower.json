@@ -20,7 +20,7 @@
     "vendor"
   ],
   "dependencies": {
-    "ember-data": "1.13.5",
-    "ember": ">= 1.12.0"
+    "ember-data": "1.13.11",
+    "ember": "1.13.9"
   }
 }

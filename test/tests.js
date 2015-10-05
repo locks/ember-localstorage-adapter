@@ -16,24 +16,24 @@ module('DS.LSAdapter', {
     App.List = DS.Model.extend({
       name: DS.attr('string'),
       b: DS.attr('boolean'),
-      items: DS.hasMany('item')
+      items: DS.hasMany('item', {async: true})
     });
 
     App.Item = DS.Model.extend({
       name: DS.attr('string'),
-      list: DS.belongsTo('list')
+      list: DS.belongsTo('list', {async: true})
     });
 
     App.Order = DS.Model.extend({
       name: DS.attr('string'),
       b: DS.attr('boolean'),
-      hours: DS.hasMany('hour')
+      hours: DS.hasMany('hour', {async: true})
     });
 
     App.Hour = DS.Model.extend({
       name: DS.attr('string'),
       amount: DS.attr('number'),
-      order: DS.belongsTo('order')
+      order: DS.belongsTo('order', {async: true})
     });
 
     App.Person = DS.Model.extend({

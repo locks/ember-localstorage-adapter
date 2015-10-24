@@ -99,7 +99,7 @@ Then install the dependencies with
 Open `test/index.html` in a browser. If you have `phantomjs` installed,
 run
 
-    phantomjs test/runner.js test/index.html
+    npm test
 
 License & Copyright
 -------------------

@@ -3,3 +3,4 @@ before_script:
   - npm install -g bower
   - bower install
 script: "phantomjs test/runner.js test/index.html"
+sudo: false

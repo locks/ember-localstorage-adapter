@@ -308,7 +308,7 @@
       return this.get('namespace') || 'DS.LSAdapter';
     },
 
-    loadData: function () {
+    loadData: function () { 
       var storage = this.getLocalStorage().getItem(this.adapterNamespace());
       return storage ? JSON.parse(storage) : {};
     },

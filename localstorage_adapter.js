@@ -120,6 +120,11 @@
 
   DS.LSAdapter = DS.Adapter.extend(Ember.Evented, {
 
+    _storage: null,//where the copy of the data of localStorage will be stored
+    useSnapshot: true,//set to false if ever anyone would like to come back to previous behavior
+    timeOutSnapshot: 200,//play with the parameter, shorter time = performance decreased, higher value=risk of losing data when reloading the page
+    _hasChanged: false,//flag to detect pushed data,
+
     /**
     * This governs if promises will be resolved immeadiatly for `findAll`
     * requests or if they will wait for the store requests to finish. This matches
@@ -192,6 +197,9 @@
       if (opts && typeof opts.allowRecursive !== 'undefined') {
         allowRecursive = opts.allowRecursive;
       }
+      if (allowRecursive) {
+        Ember.beginPropertyChanges();
+      }
 
       for (var i = 0; i < ids.length; i++) {
         record = namespace.records[ids[i]];
@@ -204,6 +212,9 @@
       if (results.get('length') && allowRecursive) {
         return this.loadRelationshipsForMany(store, type, results);
       } else {
+        if (allowRecursive) {
+          Ember.endPropertyChanges();
+        }
         return Ember.RSVP.resolve(results);
       }
     },
@@ -308,18 +319,48 @@
       return this.get('namespace') || 'DS.LSAdapter';
     },
 
-    loadData: function () {
-      var storage = this.getLocalStorage().getItem(this.adapterNamespace());
-      return storage ? JSON.parse(storage) : {};
+    loadData: function () { 
+      var storage,arr,arr_cp;
+      if (!this._storage||!this.useSnapshot) {
+        storage = this.getLocalStorage().getItem(this.adapterNamespace());
+        arr = storage ? JSON.parse(storage) : {};
+        if (this.useSnapshot) {
+          this._storage=arr;
+        }
+      }
+      else {
+        arr=this._storage;
+      }
+      var cp=Ember.copy(arr,true);
+      return cp;
     },
 
-    persistData: function(type, data) {
-      var modelNamespace = this.modelNamespace(type);
-      var localStorageData = this.loadData();
+    timerPushLocalStorage: null,
+    _launchPushLocalStorage: function() {
+      if (this.get('_hasChanged')) {
+        Ember.run.debounce(this,'_pushLocalStorage',this.timeoutSnapshot);
+      }
+    }.observes('_hasChanged'),
+    _pushLocalStorage: function() {
+      if (!this.useSnapshot || !this._storage) {return false;}
+      if (this.get('_hasChanged')) {
+        this.getLocalStorage().setItem(this.adapterNamespace(), JSON.stringify(this._storage));
+        this.set('_hasChanged',false);
+      }
+    },
 
-      localStorageData[modelNamespace] = data;
-
-      this.getLocalStorage().setItem(this.adapterNamespace(), JSON.stringify(localStorageData));
+    persistData: function(modelClass, data) {
+      var modelNamespace = this.modelNamespace(modelClass);
+      if (this.useSnapshot) {
+        if (!this._storage) {this._storage=this.loadData();}
+        this._storage[modelNamespace] = Ember.copy(data);
+        this.set('_hasChanged',true);
+      }
+      else {
+        var localStorageData = this.loadData();
+        localStorageData[modelNamespace] = data;
+        this.getLocalStorage().setItem(this.adapterNamespace(), JSON.stringify(localStorageData));
+      }
     },
 
     getLocalStorage: function() {

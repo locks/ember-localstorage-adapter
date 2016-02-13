@@ -1,4 +1,4 @@
-export default const FIXTURES = {
+export default {
   'list': {
     records: {
       'l1': { id: 'l1', name: 'one', b: true, items: ['i1', 'i2'] },

@@ -1,14 +1,13 @@
 import setupStore from 'dummy/tests/helpers/store';
 import Ember from 'ember';
 import FIXTURES from 'dummy/tests/helpers/fixtures';
+import DS from 'ember-data';
+import LSAdapter from 'ember-localstorage-adapter/adapters/ls-adapter';
 
 import {module, test} from 'qunit';
-
-import DS from 'ember-data';
-
 const run = Ember.run;
 
-let env, store, registry, List, Item, Order, Hours, Person;
+let env, store, registry, List, Item, Order, Hour, Person;
 
 module('integration/serializers/ls-serializer - LSSerializer', {
   beforeEach() {
@@ -57,4 +56,9 @@ module('integration/serializers/ls-serializer - LSSerializer', {
   afterEach() {
     run(store, 'destroy');
   }
+});
+
+test('existence', function(assert) {
+  const lsAdapter = store.adapterFor('list');
+  assert.ok(lsAdapter, 'LSAdapter exists');
 });

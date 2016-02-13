@@ -1,6 +1,6 @@
 import Ember from 'ember';
 import DS from 'ember-data';
-import Owner from '../../helpers/owner';
+import Owner from 'dummy/tests/helpers/owner';
 import LSSerializer from 'ember-localstorage-adapter/adapters/ls-adapter';
 
 export default function setupStore(options) {
@@ -8,7 +8,7 @@ export default function setupStore(options) {
   let env = {};
   options = options || {};
 
-  if (Ember.registry) {
+  if (Ember.Registry) {
     registry = env.registry = new Ember.Registry();
     owner = Owner.create({
       __registry__: registry
@@ -47,14 +47,12 @@ export default function setupStore(options) {
 
   registry.register('serializer:-default', LSSerializer);
   registry.register('serializer:-rest', DS.RESTSerializer);
-
   //registry.register('adapter:-default', DS.Adapter);
   registry.register('adapter:-rest', DS.RESTAdapter);
-  registry.injection('serializer', 'store', 'store:main');
-
-  env.serializer = env.store.serializerFor('-default');
+  //registry.injection('serializer', 'store', 'store:main');
   env.restSerializer = container.lookup('serializer:-rest');
   env.store = container.lookup('service:store');
+  env.serializer = env.store.serializerFor('-default');
   env.adapter = env.store.get('defaultAdapter');
 
   return env;

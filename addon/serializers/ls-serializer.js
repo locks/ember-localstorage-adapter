@@ -1,4 +1,3 @@
-
 import JSONSerializer from 'ember-data/serializers/json';
 
 export default JSONSerializer.extend({
@@ -56,9 +55,8 @@ export default JSONSerializer.extend({
     var included = [];
 
     if (payload && payload._embedded) {
-      var _this = this;
-      var forEachFunc = function(record){
-        included.pushObject(_this.normalize(relType,record).data);
+      var forEachFunc = (record) => {
+        included.pushObject(this.normalize(relType,record).data);
       };
 
       for (var relation in payload._embedded) {
@@ -96,9 +94,8 @@ export default JSONSerializer.extend({
    */
   normalizeArrayResponse: function(store, type, payload) {
     var response = { data: [], included: [] };
-    var _this = this;
-    payload.forEach(function(json){
-      var normalized = _this.normalizeSingleResponse(store, type, json);
+    payload.forEach((json) => {
+      var normalized = this.normalizeSingleResponse(store, type, json);
       response.data.pushObject(normalized.data);
 
       if(normalized.included){

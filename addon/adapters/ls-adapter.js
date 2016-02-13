@@ -1,6 +1,8 @@
 import Ember from 'ember';
 import DS from 'ember-data';
 
+const DEFAULT_NAMESPACE = 'DS.LSAdapter';
+
 const LSAdapter = DS.Adapter.extend(Ember.Evented, {
   /**
    * This governs if promises will be resolved immeadiatly for `findAll`
@@ -60,7 +62,7 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
   findMany: function (store, type, ids, opts) {
     var namespace = this._namespaceForType(type);
     var allowRecursive = true,
-      results = [], record;
+      results = Ember.A([]), record;
 
     /**
      * In the case where there are relationships, this method is called again
@@ -186,7 +188,7 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
   // private
 
   adapterNamespace: function () {
-    return this.get('namespace') || 'DS.LSAdapter';
+    return this.get('namespace') || DEFAULT_NAMESPACE;
   },
 
   loadData: function () {

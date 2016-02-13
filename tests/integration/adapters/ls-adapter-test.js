@@ -5,13 +5,13 @@ import DS from 'ember-data';
 import LSAdapter from 'ember-localstorage-adapter/adapters/ls-adapter';
 
 import {module, test} from 'qunit';
-const run = Ember.run;
+const {run, get} = Ember;
 
 let env, store, registry, List, Item, Order, Hour, Person;
 
 module('integration/serializers/ls-serializer - LSSerializer', {
   beforeEach() {
-    localStorage.setItem('LSAdapter', JSON.stringify(FIXTURES));
+    localStorage.setItem('DS.LSAdapter', JSON.stringify(FIXTURES));
 
     List = DS.Model.extend({
       name: DS.attr('string'),
@@ -60,5 +60,24 @@ module('integration/serializers/ls-serializer - LSSerializer', {
 
 test('existence', function(assert) {
   const lsAdapter = store.adapterFor('list');
+  const lsSerializer = store.serializerFor('list');
   assert.ok(lsAdapter, 'LSAdapter exists');
+  assert.ok(lsSerializer, 'LSSerializer exists');
 });
+
+test('find with id', function(assert) {
+  assert.expect(3);
+
+  run(store, 'findRecord', 'list', 'l1').then(assert.wait(list => {
+    console.log(list);
+    console.log(list.toString());
+    assert.equal(get(list, 'id'), 'l1', 'id is loaded correctly');
+    assert.equal(get(list, 'name'), 'one', 'name is loaded correctly');
+    assert.equal(get(list, 'done'), 'true', 'done is loaded correctly');
+  })).catch(err => {
+    assert.ok(true);
+    console.log(err.toString());
+  });
+});
+
+

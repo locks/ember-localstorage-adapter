@@ -1,9 +1,9 @@
 export default {
   'list': {
     records: {
-      'l1': { id: 'l1', name: 'one', b: true, items: ['i1', 'i2'] },
-      'l2': { id: 'l2', name: 'two', b: false, items: [] },
-      'l3': { id: 'l3', name: 'three', b: false, items: [] }
+      'l1': { id: 'l1', name: 'one', done: true, items: ['i1', 'i2'] },
+      'l2': { id: 'l2', name: 'two', done: false, items: [] },
+      'l3': { id: 'l3', name: 'three', done: false, items: [] }
     }
   },
 
@@ -16,10 +16,10 @@ export default {
 
   'order': {
     records: {
-      'o1': { id: 'o1', name: 'one', b: true, hours: ['h1', 'h2'] },
-      'o2': { id: 'o2', name: 'two', b: false, hours: [] },
-      'o3': { id: 'o3', name: 'three', b: true, hours: ['h3', 'h4'] },
-      'o4': { id: 'o4', name: 'four', b: true, hours: [] }
+      'o1': { id: 'o1', name: 'one', done: true, hours: ['h1', 'h2'] },
+      'o2': { id: 'o2', name: 'two', done: false, hours: [] },
+      'o3': { id: 'o3', name: 'three', done: true, hours: ['h3', 'h4'] },
+      'o4': { id: 'o4', name: 'four', done: true, hours: [] }
     }
   },
 

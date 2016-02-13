@@ -49,6 +49,7 @@ export default function setupStore(options) {
   registry.register('serializer:-rest', DS.RESTSerializer);
   //registry.register('adapter:-default', DS.Adapter);
   registry.register('adapter:-rest', DS.RESTAdapter);
+  registry.injection('serializer', 'store', 'service:store');
   //registry.injection('serializer', 'store', 'store:main');
   env.restSerializer = container.lookup('serializer:-rest');
   env.store = container.lookup('service:store');

@@ -1,3 +1,4 @@
+import Ember from 'ember';
 import JSONSerializer from 'ember-data/serializers/json';
 
 export default JSONSerializer.extend({
@@ -53,7 +54,6 @@ export default JSONSerializer.extend({
    */
   normalizeSingleResponse: function(store, type, payload) {
     var included = [];
-
     if (payload && payload._embedded) {
       var forEachFunc = (record) => {
         included.pushObject(this.normalize(relType,record).data);
@@ -61,8 +61,7 @@ export default JSONSerializer.extend({
 
       for (var relation in payload._embedded) {
         var relType = type.typeForRelationship(relation,store);
-        var typeName = relType.modelName,
-          embeddedPayload = payload._embedded[relation];
+          var embeddedPayload = payload._embedded[relation];
 
         if (embeddedPayload) {
           if (Ember.isArray(embeddedPayload)) {

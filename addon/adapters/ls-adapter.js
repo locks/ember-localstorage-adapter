@@ -1,13 +1,14 @@
+import Ember from 'ember';
 import Adapter from 'ember-data/adapter';
 
-export default Adapter.extend(Ember.Evented, {
+const LSAdapter = Adapter.extend(Ember.Evented, {
   /**
    * This governs if promises will be resolved immeadiatly for `findAll`
    * requests or if they will wait for the store requests to finish. This matches
    * the ember < 2.0 behavior.
    * [deprecation id: ds.adapter.should-reload-all-default-behavior]
    */
-  shouldReloadAll: function(modelClass, snapshotArray){
+  shouldReloadAll: function(/* modelClass, snapshotArray */) {
     return true;
   },
 
@@ -58,8 +59,7 @@ export default Adapter.extend(Ember.Evented, {
 
   findMany: function (store, type, ids, opts) {
     var namespace = this._namespaceForType(type);
-    var adapter = this,
-      allowRecursive = true,
+    var allowRecursive = true,
       results = [], record;
 
     /**
@@ -103,7 +103,7 @@ export default Adapter.extend(Ember.Evented, {
   //  match records with "complete: true" and the name "foo" or "bar"
   //
   //    { complete: true, name: /foo|bar/ }
-  query: function (store, type, query, recordArray) {
+  query: function (store, type, query /*recordArray*/) {
     var namespace = this._namespaceForType(type);
     var results = this._query(namespace.records, query);
 
@@ -290,10 +290,7 @@ export default Adapter.extend(Ember.Evented, {
    */
   loadRelationships: function(store, type, record) {
     var adapter = this,
-      resultJSON = {},
-      modelName = type.modelName,
-      relationshipNames, relationships,
-    relationshipPromises = [];
+      relationshipNames, relationships;
 
     /**
      * Create a chain of promises, so the relationships are
@@ -311,7 +308,6 @@ export default Adapter.extend(Ember.Evented, {
       var relationEmbeddedId = record[relationName];
       var relationProp  = adapter.relationshipProperties(type, relationName);
       var relationType  = relationProp.kind;
-      var foreignAdapter = store.adapterFor(relationModel.modelName);
 
       var opts = {allowRecursive: false};
 
@@ -329,13 +325,13 @@ export default Adapter.extend(Ember.Evented, {
        * In this case, cart belongsTo customer and its id is present in the
        * main payload. We find each of these records and add them to _embedded.
        */
-      if (relationEmbeddedId && DS.LSAdapter.prototype.isPrototypeOf(adapter))
+      if (relationEmbeddedId && LSAdapter.prototype.isPrototypeOf(adapter))
         {
           recordPromise = recordPromise.then(function(recordPayload) {
             var promise;
             if (relationType === 'belongsTo' || relationType === 'hasOne') {
               promise = adapter.findRecord(null, relationModel, relationEmbeddedId, opts);
-            } else if (relationType == 'hasMany') {
+            } else if (relationType === 'hasMany') {
               promise = adapter.findMany(null, relationModel, relationEmbeddedId, opts);
             }
 
@@ -466,3 +462,4 @@ export default Adapter.extend(Ember.Evented, {
   }
 });
 
+export default LSAdapter;

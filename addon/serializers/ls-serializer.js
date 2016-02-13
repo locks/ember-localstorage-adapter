@@ -1,7 +1,7 @@
 import Ember from 'ember';
-import JSONSerializer from 'ember-data/serializers/json';
+import DS from 'ember-data';
 
-export default JSONSerializer.extend({
+export default DS.JSONSerializer.extend({
   /**
    * Invokes the new serializer API.
    * This should be removed in 2.0

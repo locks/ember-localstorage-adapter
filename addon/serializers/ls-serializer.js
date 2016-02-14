@@ -53,7 +53,7 @@ export default DS.JSONSerializer.extend({
    * @param {Object} payload returned JSON
    */
   normalizeSingleResponse: function(store, type, payload) {
-    var included = [];
+    var included = Ember.A([]);
     if (payload && payload._embedded) {
       var forEachFunc = (record) => {
         included.pushObject(this.normalize(relType,record).data);

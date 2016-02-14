@@ -7,7 +7,7 @@ import LSAdapter from 'ember-localstorage-adapter/adapters/ls-adapter';
 import {module, test} from 'qunit';
 const {run, get} = Ember;
 
-let env, store, registry, List, Item, Order, Hour, Person;
+let env, store, List, Item, Order, Hour, Person;
 
 module('integration/serializers/ls-serializer - LSSerializer', {
   beforeEach() {
@@ -50,7 +50,13 @@ module('integration/serializers/ls-serializer - LSSerializer', {
       adapter: LSAdapter
     });
     store = env.store;
-    registry = env.registry;
+    //registry = env.registry;
+
+    env.store.modelFor('list');
+    env.store.modelFor('item');
+    env.store.modelFor('order');
+    env.store.modelFor('hour');
+    env.store.modelFor('person');
   },
 
   afterEach() {
@@ -67,16 +73,12 @@ test('existence', function(assert) {
 
 test('find with id', function(assert) {
   assert.expect(3);
-
-  run(store, 'findRecord', 'list', 'l1').then(assert.wait(list => {
-    console.log(list);
-    console.log(list.toString());
+  const done = assert.async();
+  run(store, 'findRecord', 'list', 'l1').then(list => {
     assert.equal(get(list, 'id'), 'l1', 'id is loaded correctly');
     assert.equal(get(list, 'name'), 'one', 'name is loaded correctly');
-    assert.equal(get(list, 'done'), 'true', 'done is loaded correctly');
-  })).catch(err => {
-    assert.ok(true);
-    console.log(err.toString());
+    assert.equal(get(list, 'done'), true, 'done is loaded correctly');
+    done();
   });
 });
 

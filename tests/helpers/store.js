@@ -1,7 +1,7 @@
 import Ember from 'ember';
 import DS from 'ember-data';
 import Owner from 'dummy/tests/helpers/owner';
-import LSSerializer from 'ember-localstorage-adapter/adapters/ls-adapter';
+import LSSerializer from 'ember-localstorage-adapter/serializers/ls-serializer';
 
 export default function setupStore(options) {
   let container, registry, owner;
@@ -46,15 +46,24 @@ export default function setupStore(options) {
   registry.optionsForType('adapter', { singleton: false });
 
   registry.register('serializer:-default', LSSerializer);
-  registry.register('serializer:-rest', DS.RESTSerializer);
-  //registry.register('adapter:-default', DS.Adapter);
-  registry.register('adapter:-rest', DS.RESTAdapter);
-  registry.injection('serializer', 'store', 'service:store');
-  //registry.injection('serializer', 'store', 'store:main');
-  env.restSerializer = container.lookup('serializer:-rest');
+
   env.store = container.lookup('service:store');
-  env.serializer = env.store.serializerFor('-default');
-  env.adapter = env.store.get('defaultAdapter');
+  env.serializer = container.lookup('serializer:-default');
+  env.adapter = container.lookup('adapter:-default');
 
   return env;
 }
+
+const transforms = {
+  'boolean': DS.BooleanTransform.create(),
+  'date': DS.DateTransform.create(),
+  'number': DS.NumberTransform.create(),
+  'string': DS.StringTransform.create()
+};
+
+// Prevent all tests involving serialization to require a container
+DS.JSONSerializer.reopen({
+  transformFor: function(attributeType) {
+    return this._super(attributeType, true) || transforms[attributeType];
+  }
+});

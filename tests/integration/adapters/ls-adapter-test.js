@@ -57,9 +57,9 @@ module('integration/serializers/ls-serializer - LSSerializer', {
   }
 });
 
-test('existence', function(assert) {
-  const lsAdapter = store.adapterFor('list');
-  const lsSerializer = store.serializerFor('list');
+test('exists through the store', function(assert) {
+  const lsAdapter = store.adapterFor('-default');
+  const lsSerializer = store.serializerFor('-default');
   assert.ok(lsAdapter, 'LSAdapter exists');
   assert.ok(lsSerializer, 'LSSerializer exists');
 });
@@ -75,4 +75,149 @@ test('find with id', function(assert) {
   });
 });
 
+test('find rejects promise for non-existing record', function(assert) {
+  assert.expect(1);
+  const done = assert.async();
+  // using run like on the other tests makes the test fail.
+  run(() => {
+    store.findRecord('list', 'unknown').catch(() => {
+      assert.ok(true);
+      done();
+    });
+  });
+});
 
+test('query', function(assert) {
+  assert.expect(2);
+  const done = assert.async(2);
+
+  run(store, 'query', 'list', {name: /one|two/}).then(records => {
+    assert.equal(get(records, 'length'), 2, 'found results for /one|two/');
+    done();
+  });
+  run(store, 'query', 'list', {name: /.+/, id: /l1/}).then(records => {
+    assert.equal(get(records, 'length'), 1, 'found results for {name: /.+/, id: /l1/}');
+    done();
+  });
+});
+
+test('query rejects promise when there are no records', function(assert) {
+  const done = assert.async();
+  assert.expect(2);
+  run(store, 'query', 'list', {name: /unknown/}).catch(() => {
+    assert.ok(true);
+    assert.equal(store.hasRecordForId('list', 'unknown'), false);
+    done();
+  });
+});
+
+test('findAll', function(assert) {
+  assert.expect(4);
+  const done = assert.async();
+
+  run(store, 'findAll', 'list').then(records => {
+    assert.equal(get(records, 'length'), 3, '3 items were found');
+    const [firstRecord, secondRecord, thirdRecord] = records.toArray();
+    assert.equal(get(firstRecord, 'name'), 'one', 'First item name is one');
+    assert.equal(get(secondRecord, 'name'), 'two', 'Second item name is two');
+    assert.equal(get(thirdRecord, 'name'), 'three', 'Third item name is three');
+    done();
+  });
+});
+
+test('queryMany', function(assert) {
+  assert.expect(11);
+  const done = assert.async();
+  run(store, 'query', 'order', { done: true }).then(records => {
+    const [firstRecord, secondRecord, thirdRecord] = records.toArray();
+    assert.equal(get(records, 'length'), 3, '3 orders were found');
+    assert.equal(get(firstRecord, 'name'), 'one', 'First\'s order name is one');
+    assert.equal(get(secondRecord, 'name'), 'three', 'Second\'s order name is three');
+    assert.equal(get(thirdRecord, 'name'), 'four', 'Third\'s order name is four');
+
+    const firstHours = firstRecord.get('hours'),
+      secondHours = secondRecord.get('hours'),
+      thirdHours = thirdRecord.get('hours');
+
+    assert.equal(get(firstHours, 'length'), 2, 'Order one has two hours');
+    assert.equal(get(secondHours, 'length'), 2, 'Order three has two hours');
+    assert.equal(get(thirdHours, 'length'), 0, 'Order four has no hours');
+
+    const [hourOne, hourTwo] = firstHours.toArray();
+    const [hourThree, hourFour] = secondHours.toArray();
+    assert.equal(get(hourOne, 'amount'), 4, 'Hour one has amount of 4');
+    assert.equal(get(hourTwo, 'amount'), 3, 'Hour two has amount of 3');
+    assert.equal(get(hourThree, 'amount'), 2, 'Hour three has amount of 2');
+    assert.equal(get(hourFour, 'amount'), 1, 'Hour four has amount of 1');
+    done();
+  });
+});
+
+test('createRecord', function(assert) {
+  assert.expect(5);
+  const done = assert.async(2);
+  const list = run(store, 'createRecord', 'list', {name: 'Rambo'});
+
+  run(list, 'save').then(() => {
+    store.query('list', {name: 'Rambo'}).then(records => {
+      let record = records.objectAt(0);
+
+      assert.equal(get(records, 'length'), 1, 'Only Rambo was found');
+      assert.equal(get(record, 'name'), 'Rambo', 'Correct name');
+      assert.equal(get(record, 'id'), list.id, 'Correct, original id');
+      done();
+    });
+  });
+
+  run(list, 'save').then(() => {
+    store.findRecord('list', list.id).then(record => {
+      assert.equal(get(record, 'name'), 'Rambo', 'Correct name');
+      assert.equal(get(record, 'id'), list.id, 'Correct, original id');
+      done();
+    });
+  });
+});
+
+test('updateRecords', function(assert) {
+  assert.expect(3);
+  const done = assert.async();
+  const list = run(store, 'createRecord', 'list', {name: 'Rambo'});
+
+  run(list, 'save').then(list => {
+    return store.query('list', {name: 'Rambo'}).then(records => {
+      let record = records.objectAt(0);
+      record.set('name', 'Macgyver');
+      return record.save();
+    }).then(() => {
+      return store.query('list', {name: 'Macgyver'}).then(records => {
+        let record = records.objectAt(0);
+        assert.equal(get(records, 'length'), 1, 'Only one record was found');
+        assert.equal(get(record, 'name'), 'Macgyver', 'Updated name shows up');
+        assert.equal(get(record, 'id'), list.id, 'Correct, original id');
+        done();
+      });
+    });
+  });
+});
+
+test('deleteRecord', function(assert) {
+  assert.expect(2);
+  const done = assert.async();
+
+  const assertListIsDeleted = () => {
+    return store.query('list', {name: 'one'}).catch(() => {
+      assert.ok(true, 'List was deleted');
+      done();
+    });
+  };
+
+  run(() => {
+    store.query('list', {name: 'one'}).then(lists => {
+      const list = lists.objectAt(0);
+      assert.equal(get(list, 'id'), 'l1', 'Item exists');
+      list.deleteRecord();
+      list.on('didDelete', assertListIsDeleted);
+      list.save();
+    });
+  });
+});

@@ -117,7 +117,7 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
   },
 
   _query: function (records, query) {
-    var results = [], record;
+    var results = Ember.A([]), record;
 
     function recordMatchesQuery(record) {
       return Object.keys(query).every(function(property) {
@@ -141,7 +141,7 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
 
   findAll: function (store, type) {
     var namespace = this._namespaceForType(type),
-      results = [];
+      results = Ember.A([]);
 
     for (var id in namespace.records) {
       results.push(Ember.copy(namespace.records[id]));
@@ -427,7 +427,7 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
    */
   loadRelationshipsForMany: function(store, type, recordsArray) {
     var adapter = this,
-      promise = Ember.RSVP.resolve([]);
+      promise = Ember.RSVP.resolve(Ember.A([]));
 
     /**
      * Create a chain of promises, so the records are loaded sequentially.

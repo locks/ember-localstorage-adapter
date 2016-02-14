@@ -50,13 +50,6 @@ module('integration/serializers/ls-serializer - LSSerializer', {
       adapter: LSAdapter
     });
     store = env.store;
-    //registry = env.registry;
-
-    env.store.modelFor('list');
-    env.store.modelFor('item');
-    env.store.modelFor('order');
-    env.store.modelFor('hour');
-    env.store.modelFor('person');
   },
 
   afterEach() {

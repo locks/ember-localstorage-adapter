@@ -9,7 +9,7 @@ const {run, get, set} = Ember;
 
 let env, store, List, Item, Order, Hour, Person;
 
-module('integration/serializers/ls-serializer - LSSerializer', {
+module('integration/adapters/ls-adapter - LSAdapter', {
   beforeEach() {
     localStorage.setItem('DS.LSAdapter', JSON.stringify(FIXTURES));
 
@@ -294,6 +294,98 @@ test('load belongsTo association', function(assert) {
   }).then(list => {
     assert.equal(get(list, 'id'), 'l1', 'id is loaded correctly');
     assert.equal(get(list, 'name'), 'one', 'name is loaded correctly');
+    done();
+  });
+});
+
+test('saves belongsTo', function(assert) {
+  assert.expect(2);
+  let item, listId = 'l2';
+  const done = assert.async();
+
+  run(store, 'findRecord', 'list', listId).then(list => {
+    item = store.createRecord('item', { name: 'three thousand' });
+    set(item, 'list', list);
+
+    return Ember.RSVP.all([list.save(), item.save()]);
+
+  }).then(([list, item]) => {
+
+    store.unloadAll('item');
+    return store.findRecord('item', get(item, 'id'));
+  }).then(item => {
+    let list = get(item, 'list');
+    assert.ok(get(item, 'list'), 'list is present');
+    assert.equal(get(list, 'id'), listId, 'list is retrieved correctly');
+    done();
+  });
+});
+
+test('saves hasMany', function(assert) {
+  assert.expect(1);
+  let listId = 'l2';
+  const done = assert.async();
+
+  let list = run(store, 'findRecord', 'list', listId);
+  let item = run(store, 'createRecord', 'item', {name: 'three thousand'});
+
+  return Ember.RSVP.all([list, item]).then(([list, item]) => {
+    get(list, 'items').pushObject(item);
+    return Ember.RSVP.all([list.save(), item.save()]);
+  }).then(() => {
+    store.unloadAll('list');
+    return store.findRecord('list', listId);
+  }).then(list => {
+    let item = get(list, 'items').objectAt(0);
+    assert.equal(get(item, 'name'), 'three thousand', 'item is saved');
+    done();
+  });
+});
+
+test('date is loaded correctly', function(assert) {
+  assert.expect(2);
+  const done = assert.async();
+
+  const date = new Date(1982, 05, 18);
+  const person = run(store, 'createRecord', 'person', {
+    name: 'Dan', birthdate: date
+  });
+
+  return run(person, 'save').then(() => {
+    return store.query('person', {name: 'Dan'}).then(records => {
+      const loadedPerson = get(records, 'firstObject');
+      const birthdate = get(loadedPerson, 'birthdate');
+      assert.ok((birthdate instanceof Date), 'Date should be loaded as an instance of Date');
+      assert.equal(birthdate.getTime(), date.getTime(), 'Date content should be loaded correctly');
+      done();
+    });
+  });
+});
+
+test('handles localStorage being unavailable', function(assert) {
+  assert.expect(3);
+  const done = assert.async();
+
+  let calledDefaultAdapter = false;
+  const handler = () => {
+    calledDefaultAdapter = true;
+  };
+  var adapter = store.get('defaultAdapter');
+
+  // We can't actually disable localStorage in PhantomJS, so emulate as closely as possible by
+  // causing a wrapper method on the adapter to throw.
+  adapter.getNativeStorage = function() { throw new Error('Nope.'); };
+  adapter.on('persistenceUnavailable', handler);
+
+  var person = run(store, 'createRecord', 'person', { id: 'tom', name: 'Tom' });
+  assert.notOk(calledDefaultAdapter, 'Should not trigger `persistenceUnavailable` until actually trying to persist');
+
+  run(person, 'save').then(() => {
+    assert.ok(calledDefaultAdapter, 'Saving a record without local storage should trigger `persistenceUnavailable`');
+    store.unloadRecord(person);
+    return store.findRecord('person', 'tom');
+  }).then((reloadedPerson) => {
+    assert.equal(get(reloadedPerson, 'name'), 'Tom', 'Records should still persist in-memory without local storage');
     done();
   });
 });

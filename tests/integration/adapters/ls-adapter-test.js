@@ -5,7 +5,7 @@ import DS from 'ember-data';
 import LSAdapter from 'ember-localstorage-adapter/adapters/ls-adapter';
 
 import {module, test} from 'qunit';
-const {run, get} = Ember;
+const {run, get, set} = Ember;
 
 let env, store, List, Item, Order, Hour, Person;
 
@@ -219,5 +219,81 @@ test('deleteRecord', function(assert) {
       list.on('didDelete', assertListIsDeleted);
       list.save();
     });
+  });
+});
+
+test('changes in bulk', function(assert) {
+  assert.expect(3);
+  const done = assert.async();
+  let promises;
+
+  let listToUpdate = run(store, 'findRecord', 'list', 'l1'),
+    listToDelete = run(store, 'findRecord', 'list', 'l2'),
+    listToCreate = run(store, 'createRecord', 'list', {name: 'Rambo'});
+
+  const updateList = (list) => {
+    set(list, 'name', 'updatedName');
+    return list;
+  };
+
+  const deleteList = (list) => {
+    run(list, 'deleteRecord');
+    return list;
+  };
+
+  promises = [
+    listToCreate,
+    listToUpdate.then(updateList),
+    listToDelete.then(deleteList)
+  ];
+
+  Ember.RSVP.all(promises).then(lists => {
+    return lists.map(list => {
+      return list.save();
+    });
+  }).then(() => {
+
+    let createdList = store.query('list', {name: 'Rambo'}).then(lists => {
+      return assert.equal(get(lists, 'length'), 1, 'Record was created successfully');
+    });
+    let deletedList = store.findRecord('list', 'l2').then(list => {
+      return assert.equal(get(list, 'length'), undefined, 'Record was deleted successfully');
+    });
+    let updatedList = store.findRecord('list', 'l1').then(list => {
+      return assert.equal(get(list, 'name'), 'updatedName', 'Record was updated successfully');
+    });
+
+    return Ember.RSVP.all([createdList, deletedList, updatedList]).then(done);
+  });
+});
+
+test('load hasMany association', function(assert) {
+  assert.expect(4);
+  const done = assert.async();
+
+  run(store, 'findRecord', 'list', 'l1').then(list => {
+    let items = get(list, 'items');
+
+    let firstItem = get(items, 'firstObject'),
+      lastItem = get(items, 'lastObject');
+
+    assert.equal(get(firstItem, 'id'), 'i1', 'first item id is loaded correctly');
+    assert.equal(get(firstItem, 'name'), 'one', 'first item name is loaded correctly');
+    assert.equal(get(lastItem, 'id'), 'i2', 'last item id is loaded correctly');
+    assert.equal(get(lastItem, 'name'), 'two', 'last item name is loaded correctly');
+    done();
+  });
+});
+
+test('load belongsTo association', function(assert) {
+  assert.expect(2);
+  const done = assert.async();
+
+  run(store, 'findRecord', 'item', 'i1').then(item => {
+    return get(item, 'list');
+  }).then(list => {
+    assert.equal(get(list, 'id'), 'l1', 'id is loaded correctly');
+    assert.equal(get(list, 'name'), 'one', 'name is loaded correctly');
+    done();
   });
 });

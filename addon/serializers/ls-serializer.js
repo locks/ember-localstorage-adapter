@@ -64,7 +64,7 @@ export default DS.JSONSerializer.extend({
           var embeddedPayload = payload._embedded[relation];
 
         if (embeddedPayload) {
-          if (Ember.isArray(embeddedPayload)) {
+          if (Ember.typeOf(embeddedPayload) === 'array') {
             embeddedPayload.forEach(forEachFunc);
           } else {
             included.pushObject(this.normalize(relType, embeddedPayload).data);

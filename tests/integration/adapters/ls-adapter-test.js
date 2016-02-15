@@ -366,9 +366,9 @@ test('handles localStorage being unavailable', function(assert) {
   assert.expect(3);
   const done = assert.async();
 
-  let calledDefaultAdapter = false;
+  let calledGetnativeStorage = false;
   const handler = () => {
-    calledDefaultAdapter = true;
+    calledGetnativeStorage = true;
   };
   var adapter = store.get('defaultAdapter');
 
@@ -378,10 +378,10 @@ test('handles localStorage being unavailable', function(assert) {
   adapter.on('persistenceUnavailable', handler);
 
   var person = run(store, 'createRecord', 'person', { id: 'tom', name: 'Tom' });
-  assert.notOk(calledDefaultAdapter, 'Should not trigger `persistenceUnavailable` until actually trying to persist');
+  assert.notOk(calledGetnativeStorage, 'Should not trigger `persistenceUnavailable` until actually trying to persist');
 
   run(person, 'save').then(() => {
-    assert.ok(calledDefaultAdapter, 'Saving a record without local storage should trigger `persistenceUnavailable`');
+    assert.ok(calledGetnativeStorage, 'Saving a record without local storage should trigger `persistenceUnavailable`');
     store.unloadRecord(person);
     return store.findRecord('person', 'tom');
   }).then((reloadedPerson) => {

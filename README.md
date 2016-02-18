@@ -26,7 +26,7 @@ export default LSSerializer.extend();
 // app/adapters/application.js
 import LSAdapter from 'ember-localstorage-adapter';
 
-export default LSSAdapter.extend({
+export default LSAdapter.extend({
   namespace: 'yournamespace'
 });
 ```

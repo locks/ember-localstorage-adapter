@@ -1,6 +1,6 @@
 {
   "name": "ember-localstorage-adapter",
-  "version": "1.0.0",
+  "version": "1.0.0-rc.1",
   "description": "Store your Ember application data in LocalStorage.",
   "directories": {
     "doc": "doc",

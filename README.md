@@ -1,12 +1,11 @@
-Ember Data Local Storage Adapter
-================================
+# Ember-localstorage-adapter
 
 [![Build
 Status](https://travis-ci.org/locks/ember-localstorage-adapter.svg?branch=master)](https://travis-ci.org/locks/ember-localstorage-adapter)
 
 Store your ember application data in localStorage.
 
-Compatible with Ember Data 1.13
+Compatible with Ember Data 1.13 and above.
 
 **NOTE**: New versions of the `localStorage` adapter are no longer compatible
 with older versions of Ember Data. For older versions, checkout the `pre-beta`
@@ -15,19 +14,21 @@ branch.
 Usage
 -----
 
-Include `localstorage_adapter.js` in your app and then like all adapters:
+Include this addon in your app with `ember install ember-localstorage-adapter`
+and then like all adapters and serializers:
 
 ```js
-App.ApplicationSerializer = DS.LSSerializer.extend();
-App.ApplicationAdapter = DS.LSAdapter.extend({
-    namespace: 'yournamespace'
+// app/serializers/application.js
+import { LSSerializer } from 'ember-localstorage-adapter';
+
+export default LSSerializer.extend();
+
+// app/adapters/application.js
+import LSAdapter from 'ember-localstorage-adapter';
+
+export default LSAdapter.extend({
+  namespace: 'yournamespace'
 });
-```
-
-If you are using Ember Localstorage Adapter within an Ember CLI project you can install it as an addon with the following command:
-
-```sh
-ember install:bower ember-localstorage-adapter
 ```
 
 ### Local Storage Namespace
@@ -35,7 +36,9 @@ ember install:bower ember-localstorage-adapter
 All of your application data lives on a single `localStorage` key, it defaults to `DS.LSAdapter` but if you supply a `namespace` option it will store it there:
 
 ```js
-DS.LSAdapter.create({
+import LSAdapter from 'ember-localstorage-adapter/adapters/ls-adapter';
+
+export default LSAdapter.extend({
   namespace: 'my app'
 });
 ```
@@ -50,12 +53,13 @@ relationships, so __do not__ use `{async: true}` in your model definitions.
 If your model definition has a `url` property, the adapter will store the data on that namespace. URL is a weird term in this context, but it makes swapping out adapters simpler by not requiring additional properties on your models.
 
 ```js
-var List = DS.Model.extend({
+const List = DS.Model.extend({
   // ...
 });
 List.reopen({
   url: '/some/url'
 });
+export default List;
 ```
 
 ### Quota Exceeded Handler
@@ -63,11 +67,12 @@ List.reopen({
 Browser's `localStorage` has limited space, if you try to commit application data and the browser is out of space, then the adapter will trigger the `QUOTA_EXCEEDED_ERR` event.
 
 ```js
-App.store.adapter.on('QUOTA_EXCEEDED_ERR', function(records){
+import DS from 'ember-data';
+DS.Store.adapter.on('QUOTA_EXCEEDED_ERR', function(records){
   // do stuff
 });
 
-App.store.commit();
+DS.Store.commit();
 ```
 
 ### Local Storage Unavailable
@@ -80,29 +85,25 @@ adapter.on('persistenceUnavailable', function() {
 });
 ```
 
-Todo
-----
-
-- Make the repo nicer to work with long-term (do something more intelligent with dependencies found in `vendor`, etc.)
-
-Tests
------
-
-If you don't have bower, install it with
-
-    npm install bower -g
-
-Then install the dependencies with
-
-    bower install
-
-Open `test/index.html` in a browser. If you have `phantomjs` installed,
-run
-
-    npm test
-
 License & Copyright
 -------------------
 
 Copyright (c) 2012 Ryan Florence
 MIT Style license. http://opensource.org/licenses/MIT
+
+## Running
+
+* `ember server`
+* Visit your app at http://localhost:4200.
+
+## Running Tests
+
+* `npm test` (Runs `ember try:testall` to test your addon against multiple Ember versions)
+* `ember test`
+* `ember test --server`
+
+## Building
+
+* `ember build`
+
+For more information on using ember-cli, visit [http://www.ember-cli.com/](http://www.ember-cli.com/).

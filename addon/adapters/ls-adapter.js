@@ -5,7 +5,7 @@ const DEFAULT_NAMESPACE = 'DS.LSAdapter';
 
 const LSAdapter = DS.Adapter.extend(Ember.Evented, {
   /**
-   * This governs if promises will be resolved immeadiatly for `findAll`
+   * This governs if promises will be resolved immediately for `findAll`
    * requests or if they will wait for the store requests to finish. This matches
    * the ember < 2.0 behavior.
    * [deprecation id: ds.adapter.should-reload-all-default-behavior]

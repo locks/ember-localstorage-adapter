@@ -1,3 +1,4 @@
+/* global localStorage */
 import setupStore from 'dummy/tests/helpers/store';
 import Ember from 'ember';
 import FIXTURES from 'dummy/tests/helpers/fixtures';

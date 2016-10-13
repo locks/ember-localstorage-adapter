@@ -102,11 +102,11 @@ test('query', function(assert) {
   });
 });
 
-test('query rejects promise when there are no records', function(assert) {
+test('query resolves empty when there are no records', function(assert) {
   const done = assert.async();
   assert.expect(2);
-  run(store, 'query', 'list', {name: /unknown/}).catch(() => {
-    assert.ok(true);
+  run(store, 'query', 'list', {name: /unknown/}).then(list => {
+    assert.ok(Ember.isEmpty(list));
     assert.equal(store.hasRecordForId('list', 'unknown'), false);
     done();
   });
@@ -206,8 +206,8 @@ test('deleteRecord', function(assert) {
   const done = assert.async();
 
   const assertListIsDeleted = () => {
-    return store.query('list', {name: 'one'}).catch(() => {
-      assert.ok(true, 'List was deleted');
+    return store.query('list', {name: 'one'}).then(list => {
+      assert.ok(Ember.isEmpty(list), 'List was deleted');
       done();
     });
   };

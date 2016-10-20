@@ -99,7 +99,7 @@ export default DS.JSONSerializer.extend({
 
       if(normalized.included){
         normalized.included.forEach(function(included){
-          if(!response.included.contains(included.id)){
+          if(!response.included.includes(included.id)){
             response.included.addObject(included);
           }
         });

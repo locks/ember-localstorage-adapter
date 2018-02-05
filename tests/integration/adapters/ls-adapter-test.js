@@ -347,7 +347,7 @@ test('date is loaded correctly', function(assert) {
   assert.expect(2);
   const done = assert.async();
 
-  const date = new Date(1982, 05, 18);
+  const date = new Date(1982, 5, 18);
   const person = run(store, 'createRecord', 'person', {
     name: 'Dan', birthdate: date
   });

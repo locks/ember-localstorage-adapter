@@ -1,12 +1,13 @@
 /* global localStorage */
+import { all } from 'rsvp';
+
+import { run } from '@ember/runloop';
 import setupStore from 'dummy/tests/helpers/store';
-import Ember from 'ember';
 import FIXTURES from 'dummy/tests/helpers/fixtures';
 import DS from 'ember-data';
 import LSAdapter from 'ember-localstorage-adapter/adapters/ls-adapter';
 
-import {module, test} from 'qunit';
-const {run} = Ember;
+import { module, test } from 'qunit';
 
 let env, store, registry, List, Item;
 
@@ -51,7 +52,7 @@ test('serializeHasMany respects keyForRelationship', function(assert) {
   const list = run(store, 'createRecord', 'list', {name: 'Rails is omakase', id: 1});
   const comment = run(store, 'createRecord', 'item', {name: 'Omakase is delicious', list, id: 1});
 
-  return Ember.RSVP.all([list, comment]).then(() => {
+  return all([list, comment]).then(() => {
     let json = {};
     const snapshot = list._createSnapshot();
     store.serializerFor('list').serializeHasMany(snapshot, json, {

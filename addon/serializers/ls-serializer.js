@@ -1,4 +1,5 @@
-import Ember from 'ember';
+import { typeOf } from '@ember/utils';
+import { A } from '@ember/array';
 import DS from 'ember-data';
 
 export default DS.JSONSerializer.extend({
@@ -53,7 +54,7 @@ export default DS.JSONSerializer.extend({
    * @param {Object} payload returned JSON
    */
   normalizeSingleResponse: function(store, type, payload) {
-    var included = Ember.A([]);
+    var included = A([]);
     if (payload && payload._embedded) {
       var forEachFunc = (record) => {
         included.pushObject(this.normalize(relType,record).data);
@@ -64,7 +65,7 @@ export default DS.JSONSerializer.extend({
           var embeddedPayload = payload._embedded[relation];
 
         if (embeddedPayload) {
-          if (Ember.typeOf(embeddedPayload) === 'array') {
+          if (typeOf(embeddedPayload) === 'array') {
             embeddedPayload.forEach(forEachFunc);
           } else {
             included.pushObject(this.normalize(relType, embeddedPayload).data);
@@ -92,7 +93,7 @@ export default DS.JSONSerializer.extend({
    * @param {Array} payload returned JSONs
    */
   normalizeArrayResponse: function(store, type, payload) {
-    var response = { data: Ember.A([]), included: Ember.A([]) };
+    var response = { data: A([]), included: A([]) };
     payload.forEach((json) => {
       var normalized = this.normalizeSingleResponse(store, type, json);
       response.data.pushObject(normalized.data);

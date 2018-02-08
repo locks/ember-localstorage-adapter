@@ -1,12 +1,15 @@
 /* global localStorage */
+import { all } from 'rsvp';
+
+import { isEmpty } from '@ember/utils';
+import { run } from '@ember/runloop';
+import { set, get } from '@ember/object';
 import setupStore from 'dummy/tests/helpers/store';
-import Ember from 'ember';
 import FIXTURES from 'dummy/tests/helpers/fixtures';
 import DS from 'ember-data';
 import LSAdapter from 'ember-localstorage-adapter/adapters/ls-adapter';
 
 import { module, test } from 'qunit';
-const { run, get, set } = Ember;
 
 let env, store, List, Item, Order, Hour, Person;
 
@@ -106,7 +109,7 @@ test('query resolves empty when there are no records', function(assert) {
   const done = assert.async();
   assert.expect(2);
   run(store, 'query', 'list', { name: /unknown/ }).then(list => {
-    assert.ok(Ember.isEmpty(list));
+    assert.ok(isEmpty(list));
     assert.equal(store.hasRecordForId('list', 'unknown'), false);
     done();
   });
@@ -207,7 +210,7 @@ test('deleteRecord', function(assert) {
 
   const assertListIsDeleted = () => {
     return store.query('list', { name: 'one' }).then(list => {
-      assert.ok(Ember.isEmpty(list), 'List was deleted');
+      assert.ok(isEmpty(list), 'List was deleted');
       done();
     });
   };
@@ -248,7 +251,7 @@ test('changes in bulk', function(assert) {
     listToDelete.then(deleteList)
   ];
 
-  Ember.RSVP.all(promises).then(lists => {
+  all(promises).then(lists => {
     return lists.map(list => {
       return list.save();
     });
@@ -264,7 +267,7 @@ test('changes in bulk', function(assert) {
       return assert.equal(get(list, 'name'), 'updatedName', 'Record was updated successfully');
     });
 
-    return Ember.RSVP.all([createdList, deletedList, updatedList]).then(done);
+    return all([createdList, deletedList, updatedList]).then(done);
   });
 });
 
@@ -308,7 +311,7 @@ test('saves belongsTo', function(assert) {
     item = store.createRecord('item', { name: 'three thousand' });
     set(item, 'list', list);
 
-    return Ember.RSVP.all([list.save(), item.save()]);
+    return all([list.save(), item.save()]);
 
   }).then(([, item]) => {
 
@@ -330,9 +333,9 @@ test('saves hasMany', function(assert) {
   let list = run(store, 'findRecord', 'list', listId);
   let item = run(store, 'createRecord', 'item', { name: 'three thousand' });
 
-  return Ember.RSVP.all([list, item]).then(([list, item]) => {
+  return all([list, item]).then(([list, item]) => {
     get(list, 'items').pushObject(item);
-    return Ember.RSVP.all([list.save(), item.save()]);
+    return all([list.save(), item.save()]);
   }).then(() => {
     store.unloadAll('list');
     return store.findRecord('list', listId);

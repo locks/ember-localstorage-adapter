@@ -5,8 +5,8 @@ import FIXTURES from 'dummy/tests/helpers/fixtures';
 import DS from 'ember-data';
 import LSAdapter from 'ember-localstorage-adapter/adapters/ls-adapter';
 
-import {module, test} from 'qunit';
-const {run, get, set} = Ember;
+import { module, test } from 'qunit';
+const { run, get, set } = Ember;
 
 let env, store, List, Item, Order, Hour, Person;
 
@@ -17,24 +17,24 @@ module('integration/adapters/ls-adapter - LSAdapter', {
     List = DS.Model.extend({
       name: DS.attr('string'),
       done: DS.attr('boolean'),
-      items: DS.hasMany('item', {async: true})
+      items: DS.hasMany('item', { async: true })
     });
 
     Item = DS.Model.extend({
       name: DS.attr('string'),
-      list: DS.belongsTo('list', {async: true})
+      list: DS.belongsTo('list', { async: true })
     });
 
     Order = DS.Model.extend({
       name: DS.attr('string'),
       b: DS.attr('boolean'),
-      hours: DS.hasMany('hour', {async: true})
+      hours: DS.hasMany('hour', { async: true })
     });
 
     Hour = DS.Model.extend({
       name: DS.attr('string'),
       amount: DS.attr('number'),
-      order: DS.belongsTo('order', {async: true})
+      order: DS.belongsTo('order', { async: true })
     });
 
     Person = DS.Model.extend({
@@ -92,11 +92,11 @@ test('query', function(assert) {
   assert.expect(2);
   const done = assert.async(2);
 
-  run(store, 'query', 'list', {name: /one|two/}).then(records => {
+  run(store, 'query', 'list', { name: /one|two/ }).then(records => {
     assert.equal(get(records, 'length'), 2, 'found results for /one|two/');
     done();
   });
-  run(store, 'query', 'list', {name: /.+/, id: /l1/}).then(records => {
+  run(store, 'query', 'list', { name: /.+/, id: /l1/ }).then(records => {
     assert.equal(get(records, 'length'), 1, 'found results for {name: /.+/, id: /l1/}');
     done();
   });
@@ -105,7 +105,7 @@ test('query', function(assert) {
 test('query resolves empty when there are no records', function(assert) {
   const done = assert.async();
   assert.expect(2);
-  run(store, 'query', 'list', {name: /unknown/}).then(list => {
+  run(store, 'query', 'list', { name: /unknown/ }).then(list => {
     assert.ok(Ember.isEmpty(list));
     assert.equal(store.hasRecordForId('list', 'unknown'), false);
     done();
@@ -157,10 +157,10 @@ test('queryMany', function(assert) {
 test('createRecord', function(assert) {
   assert.expect(5);
   const done = assert.async(2);
-  const list = run(store, 'createRecord', 'list', {name: 'Rambo'});
+  const list = run(store, 'createRecord', 'list', { name: 'Rambo' });
 
   run(list, 'save').then(() => {
-    store.query('list', {name: 'Rambo'}).then(records => {
+    store.query('list', { name: 'Rambo' }).then(records => {
       let record = records.objectAt(0);
 
       assert.equal(get(records, 'length'), 1, 'Only Rambo was found');
@@ -182,15 +182,15 @@ test('createRecord', function(assert) {
 test('updateRecords', function(assert) {
   assert.expect(3);
   const done = assert.async();
-  const list = run(store, 'createRecord', 'list', {name: 'Rambo'});
+  const list = run(store, 'createRecord', 'list', { name: 'Rambo' });
 
   run(list, 'save').then(list => {
-    return store.query('list', {name: 'Rambo'}).then(records => {
+    return store.query('list', { name: 'Rambo' }).then(records => {
       let record = records.objectAt(0);
       record.set('name', 'Macgyver');
       return record.save();
     }).then(() => {
-      return store.query('list', {name: 'Macgyver'}).then(records => {
+      return store.query('list', { name: 'Macgyver' }).then(records => {
         let record = records.objectAt(0);
         assert.equal(get(records, 'length'), 1, 'Only one record was found');
         assert.equal(get(record, 'name'), 'Macgyver', 'Updated name shows up');
@@ -206,14 +206,14 @@ test('deleteRecord', function(assert) {
   const done = assert.async();
 
   const assertListIsDeleted = () => {
-    return store.query('list', {name: 'one'}).then(list => {
+    return store.query('list', { name: 'one' }).then(list => {
       assert.ok(Ember.isEmpty(list), 'List was deleted');
       done();
     });
   };
 
   run(() => {
-    store.query('list', {name: 'one'}).then(lists => {
+    store.query('list', { name: 'one' }).then(lists => {
       const list = lists.objectAt(0);
       assert.equal(get(list, 'id'), 'l1', 'Item exists');
       list.deleteRecord();
@@ -230,7 +230,7 @@ test('changes in bulk', function(assert) {
 
   let listToUpdate = run(store, 'findRecord', 'list', 'l1'),
     listToDelete = run(store, 'findRecord', 'list', 'l2'),
-    listToCreate = run(store, 'createRecord', 'list', {name: 'Rambo'});
+    listToCreate = run(store, 'createRecord', 'list', { name: 'Rambo' });
 
   const updateList = (list) => {
     set(list, 'name', 'updatedName');
@@ -254,7 +254,7 @@ test('changes in bulk', function(assert) {
     });
   }).then(() => {
 
-    let createdList = store.query('list', {name: 'Rambo'}).then(lists => {
+    let createdList = store.query('list', { name: 'Rambo' }).then(lists => {
       return assert.equal(get(lists, 'length'), 1, 'Record was created successfully');
     });
     let deletedList = store.findRecord('list', 'l2').then(list => {
@@ -310,7 +310,7 @@ test('saves belongsTo', function(assert) {
 
     return Ember.RSVP.all([list.save(), item.save()]);
 
-  }).then(([list, item]) => {
+  }).then(([, item]) => {
 
     store.unloadAll('item');
     return store.findRecord('item', get(item, 'id'));
@@ -328,7 +328,7 @@ test('saves hasMany', function(assert) {
   const done = assert.async();
 
   let list = run(store, 'findRecord', 'list', listId);
-  let item = run(store, 'createRecord', 'item', {name: 'three thousand'});
+  let item = run(store, 'createRecord', 'item', { name: 'three thousand' });
 
   return Ember.RSVP.all([list, item]).then(([list, item]) => {
     get(list, 'items').pushObject(item);
@@ -353,7 +353,7 @@ test('date is loaded correctly', function(assert) {
   });
 
   return run(person, 'save').then(() => {
-    return store.query('person', {name: 'Dan'}).then(records => {
+    return store.query('person', { name: 'Dan' }).then(records => {
       const loadedPerson = get(records, 'firstObject');
       const birthdate = get(loadedPerson, 'birthdate');
       assert.ok((birthdate instanceof Date), 'Date should be loaded as an instance of Date');

@@ -96,6 +96,11 @@ MIT Style license. http://opensource.org/licenses/MIT
 * `ember server`
 * Visit your app at http://localhost:4200.
 
+## Linting
+
+* `npm run lint:js`
+* `npm run lint:js -- --fix`
+
 ## Running Tests
 
 * `npm test` (Runs `ember try:each` to test your addon against multiple Ember versions)

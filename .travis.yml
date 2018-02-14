@@ -44,4 +44,7 @@ script:
   - npm run lint:js
   # Usually, it's ok to finish the test scenario without reverting
   #  to the addon's original dependency state, skipping "cleanup".
-  - node_modules/.bin/ember try:one $EMBER_TRY_SCENARIO --skip-cleanup
+  - node_modules/.bin/ember try:one $EMBER_TRY_SCENARIO --skip-cleanup; export EMBER_TRY_EXIT_CODE=$?
+  # It seems that /tmp may get cleaned up before `after_failure` runs
+  # so we dump the logs here if the previous command returned a non-zero exit code
+  - if [ $EMBER_TRY_EXIT_CODE -ne 0 ]; then ls /tmp/error.*.log && cat /tmp/error.*.log; fi

@@ -14,9 +14,9 @@
   "repository": "https://github.com/locks/ember-localstorage-adapter",
   "scripts": {
     "build": "ember build",
-    "lint:js": "eslint ./*.js addon addon-test-support app config lib server test-support tests",
+    "lint:js": "eslint ./*.js addon app config tests",
     "start": "ember serve",
-    "test": "ember try:testall"
+    "test": "ember try:each"
   },
   "dependencies": {
     "ember-cli-babel": "^7.5.0",

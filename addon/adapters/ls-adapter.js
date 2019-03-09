@@ -1,5 +1,4 @@
 import { get } from '@ember/object';
-import { copy } from '@ember/object/internals';
 import { reject, resolve } from 'rsvp';
 import { A } from '@ember/array';
 import Evented from '@ember/object/evented';
@@ -85,7 +84,7 @@ const LSAdapter = DS.Adapter.extend(Evented, {
       if (!record || !record.hasOwnProperty('id')) {
         return reject(new Error("Couldn't find record of type '" + type.modelName + "' for the id '" + ids[i] + "'."));
       }
-      results.push(copy(record));
+      results.push(Object.assign({}, record));
     }
 
     if (results.get('length') && allowRecursive) {
@@ -137,7 +136,7 @@ const LSAdapter = DS.Adapter.extend(Evented, {
     for (var id in records) {
       record = records[id];
       if (recordMatchesQuery(record)) {
-        results.push(copy(record));
+        results.push(Object.assign({}, record));
       }
     }
     return results;
@@ -148,7 +147,7 @@ const LSAdapter = DS.Adapter.extend(Evented, {
       results = A([]);
 
     for (var id in namespace.records) {
-      results.push(copy(namespace.records[id]));
+      results.push(Object.assign({}, namespace.records[id]));
     }
     return resolve(results);
   },

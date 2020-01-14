@@ -1,3 +1,4 @@
+import { dasherize } from '@ember/string';
 import Ember from 'ember';
 import DS from 'ember-data';
 import Owner from 'dummy/tests/helpers/owner';
@@ -37,7 +38,7 @@ export default function setupStore(options) {
   }
 
   for (var prop in options) {
-    registry.register(`model:${Ember.String.dasherize(prop)}`, options[prop]);
+    registry.register(`model:${dasherize(prop)}`, options[prop]);
   }
 
   registry.register('service:store', DS.Store.extend({adapter}));

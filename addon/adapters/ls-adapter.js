@@ -1,9 +1,12 @@
-import Ember from 'ember';
+import { get } from '@ember/object';
+import { reject, resolve } from 'rsvp';
+import { A } from '@ember/array';
+import Evented from '@ember/object/evented';
 import DS from 'ember-data';
 
 const DEFAULT_NAMESPACE = 'DS.LSAdapter';
 
-const LSAdapter = DS.Adapter.extend(Ember.Evented, {
+const LSAdapter = DS.Adapter.extend(Evented, {
   /**
    * This governs if promises will be resolved immediately for `findAll`
    * requests or if they will wait for the store requests to finish. This matches
@@ -34,7 +37,7 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
   findRecord: function(store, type, id, opts) {
     var allowRecursive = true;
     var namespace = this._namespaceForType(type);
-    var record = Ember.A(namespace.records[id]);
+    var record = A(namespace.records[id]);
 
     /**
      * In the case where there are relationships, this method is called again
@@ -49,20 +52,20 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
     }
 
     if (!record || !record.hasOwnProperty('id')) {
-      return Ember.RSVP.reject(new Error("Couldn't find record of" + " type '" + type.modelName + "' for the id '" + id + "'."));
+      return reject(new Error("Couldn't find record of" + " type '" + type.modelName + "' for the id '" + id + "'."));
     }
 
     if (allowRecursive) {
       return this.loadRelationships(store, type, record);
     } else {
-      return Ember.RSVP.resolve(record);
+      return resolve(record);
     }
   },
 
   findMany: function (store, type, ids, opts) {
     var namespace = this._namespaceForType(type);
     var allowRecursive = true,
-      results = Ember.A([]), record;
+      results = A([]), record;
 
     /**
      * In the case where there are relationships, this method is called again
@@ -79,15 +82,15 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
     for (var i = 0; i < ids.length; i++) {
       record = namespace.records[ids[i]];
       if (!record || !record.hasOwnProperty('id')) {
-        return Ember.RSVP.reject(new Error("Couldn't find record of type '" + type.modelName + "' for the id '" + ids[i] + "'."));
+        return reject(new Error("Couldn't find record of type '" + type.modelName + "' for the id '" + ids[i] + "'."));
       }
-      results.push(Ember.copy(record));
+      results.push(Object.assign({}, record));
     }
 
     if (results.get('length') && allowRecursive) {
       return this.loadRelationshipsForMany(store, type, results);
     } else {
-      return Ember.RSVP.resolve(results);
+      return resolve(results);
     }
   },
 
@@ -112,12 +115,12 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
     if (results.get('length')) {
       return this.loadRelationshipsForMany(store, type, results);
     } else {
-      return Ember.RSVP.resolve(results);
+      return resolve(results);
     }
   },
 
   _query: function (records, query) {
-    var results = Ember.A([]), record;
+    var results = A([]), record;
 
     function recordMatchesQuery(record) {
       return Object.keys(query).every(function(property) {
@@ -133,7 +136,7 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
     for (var id in records) {
       record = records[id];
       if (recordMatchesQuery(record)) {
-        results.push(Ember.copy(record));
+        results.push(Object.assign({}, record));
       }
     }
     return results;
@@ -141,12 +144,12 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
 
   findAll: function (store, type) {
     var namespace = this._namespaceForType(type),
-      results = Ember.A([]);
+      results = A([]);
 
     for (var id in namespace.records) {
-      results.push(Ember.copy(namespace.records[id]));
+      results.push(Object.assign({}, namespace.records[id]));
     }
-    return Ember.RSVP.resolve(results);
+    return resolve(results);
   },
 
   createRecord: function (store, type, snapshot) {
@@ -157,7 +160,7 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
     namespaceRecords.records[recordHash.id] = recordHash;
 
     this.persistData(type, namespaceRecords);
-    return Ember.RSVP.resolve();
+    return resolve();
   },
 
   updateRecord: function (store, type, snapshot) {
@@ -168,7 +171,7 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
     namespaceRecords.records[id] = serializer.serialize(snapshot, {includeId: true});
 
     this.persistData(type, namespaceRecords);
-    return Ember.RSVP.resolve();
+    return resolve();
   },
 
   deleteRecord: function (store, type, snapshot) {
@@ -178,7 +181,7 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
     delete namespaceRecords.records[id];
 
     this.persistData(type, namespaceRecords);
-    return Ember.RSVP.resolve();
+    return resolve();
   },
 
   generateIdForRecord: function () {
@@ -299,9 +302,9 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
      * loaded sequentially.  Think of the variable
      * `recordPromise` as of the accumulator in a left fold.
      */
-    var recordPromise = Ember.RSVP.resolve(record);
+    var recordPromise = resolve(record);
 
-    relationshipNames = Ember.get(type, 'relationshipNames');
+    relationshipNames = get(type, 'relationshipNames');
     relationships = relationshipNames.belongsTo
     .concat(relationshipNames.hasMany);
 
@@ -427,7 +430,7 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
    */
   loadRelationshipsForMany: function(store, type, recordsArray) {
     var adapter = this,
-      promise = Ember.RSVP.resolve(Ember.A([]));
+      promise = resolve(A([]));
 
     /**
      * Create a chain of promises, so the records are loaded sequentially.
@@ -455,7 +458,7 @@ const LSAdapter = DS.Adapter.extend(Ember.Evented, {
    * @param {String} relationName
    */
   relationshipProperties: function(type, relationName) {
-    var relationships = Ember.get(type, 'relationshipsByName');
+    var relationships = get(type, 'relationshipsByName');
     if (relationName) {
       return relationships.get(relationName);
     } else {

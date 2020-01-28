@@ -1,17 +1,12 @@
 ---
 language: node_js
 node_js:
-  - "6"
+  - "12"
 
-sudo: false
-dist: trusty
+dist: xenial
 
 addons:
   chrome: stable
-
-cache:
-  directories:
-    - $HOME/.npm
 
 env:
   global:
